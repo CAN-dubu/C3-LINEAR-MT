@@ -2,6 +2,15 @@
 
 /**
  * @note ap단에서 buttonPressedTime함수를 hw보다 깔끔하게 구현하는법이 아직 떠오르지않음.. 
+
+on BTN_EVENT_PRESSED:
+  pressed_start = now;
+
+on BTN_EVENT_RELEASED:
+  duration = now - pressed_start;
+ 두상태에대항 hw로부터의 이벤트만 받고 이곳에서 pressedtime을
+측정해야할지 고민중
+
  * @@ <<해결 해야할 문제 표시
 */
 
