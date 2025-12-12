@@ -1,0 +1,23 @@
+{
+    "files.associations": {
+        "hw_def.h": "c",
+        "stdint.h": "c",
+        "stdbool.h": "c",
+        "gpio.h": "c",
+        "led.h": "c",
+        "button.h": "c",
+        "rf.h": "c",
+        "hw.h": "c",
+        "sample_list.h": "c",
+        "qbuffer.h": "c",
+        "def.h": "c",
+        "sample_queue.h": "c",
+        "system_error": "cpp",
+        "ap_def.h": "c",
+        "ap.h": "c",
+        "motor.h": "c",
+        "stdio.h": "c",
+        "rf_sample_queue.h": "c",
+        "ap_input.h": "c"
+    }
+}
