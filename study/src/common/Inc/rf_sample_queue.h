@@ -3,9 +3,9 @@
 
 #include "../def.h"
 
-bool rfSampleQueueInit(void);
-void rfsampleQueueUpdate(void);
-void rfsampleQueuePush(void);
-void rfsampleQueueWrite(uint32_t code);
-bool rfsampleQueueGet(uint32_t *out_code);
+// bool rfSampleQueueInit(void);
+// void rfsampleQueueUpdate(void);
+// void rfsampleQueuePush(void);
+// void rfsampleQueueWrite(uint32_t code);
+// bool rfsampleQueueGet(uint32_t *out_code);
 #endif

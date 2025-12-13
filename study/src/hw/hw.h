@@ -9,8 +9,8 @@ extern "C" {
 
 #include "Inc/button.h"
 #include "Inc/led.h"
-#include "Inc/rf.h"
-#include "Inc/motor.h"
+// #include "Inc/rf.h"
+// #include "Inc/motor.h"
 
 bool hwInit(void);
 void hwUpdate(void);

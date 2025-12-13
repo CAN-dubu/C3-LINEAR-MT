@@ -9,6 +9,15 @@
 #define BTN1_PIN 0
 #define BTN2_PIN 4
 
+typedef enum
+{
+  BTN_IDLE,
+  BTN_DEBOUNCE_PRESSED,
+  BTN_DEBOUNCE_RELEASED,
+  BTN_PRESSED,    
+  BTN_RELEASED,    
+} Button_debounce_t;
+
 typedef struct
 {
   uint8_t pin;
@@ -24,9 +33,7 @@ typedef struct
   bool               pressed;
   uint16_t           pressed_cnt;
   uint32_t           pre_time;
-  uint32_t           pressed_start_time;
-  uint32_t           pressed_end_time;
-  ButtonEvent_t      pressed_event;
+  Button_hw_event_t  pressed_event;
   const button_hw_t *p_hw;
 } button_t;
 
@@ -87,8 +94,8 @@ void buttonTask(void)
         {
           p_btn->pressed = true;
           p_btn->pressed_cnt++;
-          p_btn->pressed_start_time = millis();
           p_btn->state = BTN_PRESSED;
+          p_btn->pressed_event = BTN_HW_EVENT_PRESSED;
         }
         else
         {
@@ -104,12 +111,7 @@ void buttonTask(void)
         {
           p_btn->pressed = false;
           p_btn->state = BTN_RELEASED;
-
-          // if (buttonGetPressedTime(i) < 3000)
-          // {
-          //   p_btn->pressed_event = BUTTON_EVENT_SHORT;
-          // }
-          buttonResetTime(i);
+          p_btn->pressed_event = BTN_HW_EVENT_RELEASED;
         }
         else
         {
@@ -121,16 +123,6 @@ void buttonTask(void)
         break;
 
       case BTN_PRESSED:
-        p_btn->pressed_end_time = millis();
-
-        // if (buttonGetPressedTime(i) >= 10000)
-        // {
-        //   p_btn->pressed_event = BUTTON_EVENT_LONG_10S;
-        // }
-        // else if (buttonGetPressedTime(i) >= 3000)
-        // {
-        //   p_btn->pressed_event = BUTTON_EVENT_LONG_3S;
-        // }
 
         if (buttonGetPin(i) == false)
         {
@@ -191,24 +183,15 @@ uint32_t buttonGetData(void)
   return ret;
 }
 
-uint32_t buttonGetPressedTime(uint8_t ch)
+Button_hw_event_t buttonGetEvent(uint8_t ch)
 {
-  volatile uint32_t ret;
+  if (ch >= BUTTON_PIN_MAX)
+  {
+    return BTN_HW_EVENT_NONE;
+  }
 
-  ret = button_tbl[ch].pressed_end_time - button_tbl[ch].pressed_start_time;
-  return ret;
-}
-
-void buttonResetTime(uint8_t ch)
-{
-  button_tbl[ch].pressed_start_time    = 0;
-  button_tbl[ch].pressed_end_time      = 0;
-}
-
-ButtonEvent_t buttonGetEvent(uint8_t ch)
-{
-  ButtonEvent_t button_event = button_tbl[ch].pressed_event;
-  button_tbl[ch].pressed_event = BUTTON_EVENT_NONE; // 읽으면 초기화
+  Button_hw_event_t button_event = button_tbl[ch].pressed_event;
+  button_tbl[ch].pressed_event = BTN_HW_EVENT_NONE; // 읽으면 초기화
   return button_event;
 }
 

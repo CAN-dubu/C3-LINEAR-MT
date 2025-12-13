@@ -4,7 +4,7 @@
 
 void apInit(void)
 {
-  sampleQueueInit();
+  inputInit();
 }
 
 void apMain(void)
@@ -13,13 +13,8 @@ void apMain(void)
   while(1)
   {
     inputProcess();
-    remoteProcess();
-    motorProcess();
-    modeProcess();
+    // remoteProcess();
+    // motorProcess();
+    // modeProcess();
   }
 }
-
-// void apMain(void)
-// {
-
-// }
