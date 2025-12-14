@@ -13,7 +13,6 @@ extern "C" {
 // #include "Inc/motor.h"
 
 bool hwInit(void);
-void hwUpdate(void);
 
 #ifdef __cplusplus
 }

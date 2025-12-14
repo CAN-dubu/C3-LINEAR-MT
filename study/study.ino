@@ -160,31 +160,7 @@ void loop()
 //   remote_mode.learn_mode_enter_time = millis();
 // }
 
-// /**
-//  * @brief 물리 버튼에 대한 이벤트 핸들러, "여기에서 직접처리". (이벤트 사용성) 순위 1
-//  */
-// void buttonEventHandler(void)
-// {
-//   ButtonEvent_t first_button_event = buttonGetEvent(BTN_CH1);
-//   ButtonEvent_t second_button_event = buttonGetEvent(BTN_CH2);
 
-//   if (first_button_event == BUTTON_EVENT_LONG_10S && second_button_event == BUTTON_EVENT_LONG_10S)
-//   {
-//     changeRemoteState(REMOTE_DELETE);
-//   }
-//   else if (first_button_event == BUTTON_EVENT_LONG_3S && second_button_event == BUTTON_EVENT_LONG_3S)
-//   {
-//     changeRemoteState(REMOTE_LEARN);
-//   }
-//   else if (first_button_event == BUTTON_EVENT_SHORT && second_button_event == BUTTON_EVENT_NONE)
-//   {
-//     motorGoUp(MOTOR_CH1);
-//   }
-//   else if (first_button_event == BUTTON_EVENT_NONE && second_button_event == BUTTON_EVENT_SHORT)
-//   {
-//     motorGoDown(MOTOR_CH1);
-//   }
-// }
 
 // /**
 //  * @brief RF신호에 대한 이벤트 핸들러, sampleQueueWrite말고 다른거 생각;; sample이름은 너무 general함.

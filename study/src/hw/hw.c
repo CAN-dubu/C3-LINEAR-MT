@@ -4,14 +4,8 @@ bool hwInit(void)
 {
   buttonInit();
   ledInit();
-  // rfInit();
+  rfInit();
   // motorInit();
 
   return true;
-}
-
-void hwUpdate(void)
-{
-  // buttonTask();
-  // rfTask();
 }

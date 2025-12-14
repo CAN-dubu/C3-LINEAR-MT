@@ -12,6 +12,7 @@ typedef enum
 {
   BTN_HW_EVENT_NONE,
   BTN_HW_EVENT_PRESSED,
+  BTN_HW_EVENT_KEEP_PRESSING,
   BTN_HW_EVENT_RELEASED,
 } Button_hw_event_t;
 

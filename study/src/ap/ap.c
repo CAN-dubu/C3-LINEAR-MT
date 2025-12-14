@@ -5,16 +5,16 @@
 void apInit(void)
 {
   inputInit();
+  modeInit();
 }
 
 void apMain(void)
 {
-  // sampleQueueUpdate();
   while(1)
   {
     inputProcess();
     // remoteProcess();
     // motorProcess();
-    // modeProcess();
+    modeProcess();
   }
 }

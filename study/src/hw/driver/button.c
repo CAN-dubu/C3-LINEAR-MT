@@ -67,8 +67,6 @@ bool buttonInit(void)
 
 void buttonTask(void)
 {
-  static bool is_3000ms_locked  = true;
-  static bool is_10000ms_locked = true;
 
   for (int i=0; i<BUTTON_MAX_CH; i++)
   {
@@ -124,10 +122,13 @@ void buttonTask(void)
 
       case BTN_PRESSED:
 
+        p_btn->pressed_event = BTN_HW_EVENT_KEEP_PRESSING;
+
         if (buttonGetPin(i) == false)
         {
           // buttonResetTime();
           p_btn->state = BTN_IDLE;
+          
         }
         break;
 

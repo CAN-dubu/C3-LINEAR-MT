@@ -21,7 +21,6 @@ typedef struct
 {
   uint8_t         state;
   uint32_t        pre_time;
-  uint32_t        delay_time;
   uint32_t        received_data;
   bool            received_data_is_valid;
   RF_Event_t      received_event;

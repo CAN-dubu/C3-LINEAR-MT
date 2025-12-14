@@ -27,6 +27,11 @@ bool inputInit(void)
   return ret;
 }
 
+/**
+ * @brief 실제 inputEvent를 발생시키는 프로세스, 
+ *        hw_button에서 pressed 혹은 released 이벤트를 받아 pressedTime을 계산하고 
+ *        그에 맞는 의미를 지닌 event를 발생시켜 상위 ap에 전달, 
+ */
 void inputProcess(void)
 {
   buttonTask();
@@ -35,32 +40,41 @@ void inputProcess(void)
   {
     Button_hw_event_t btn_hw_event = buttonGetEvent(i);
 
-    if (btn_hw_event == BTN_HW_EVENT_PRESSED)
-    {  
-      ap_input[i].pressed_start_time = millis();
-    }
-    else if (btn_hw_event == BTN_HW_EVENT_RELEASED)
+    switch (btn_hw_event)
     {
-      uint32_t pressed_time = millis() - ap_input[i].pressed_start_time;
+      case BTN_HW_EVENT_PRESSED:
+        ap_input[i].pressed_start_time = millis();
+        break;
 
-      if (pressed_time >= BTN_PRESSED_TIME_LONG) // PRESSED_LONG 제일 첫번째. 반대가 되면 PRESSED_MIDDLE에 영원히 걸림
+      case BTN_HW_EVENT_KEEP_PRESSING:
       {
-        printf("눌렀다!! 10초!!!!!%d번째 버튼!!\n", i);
-        ap_input[i].input_pressed_event = INPUT_EVENT_PRESSED_LONG;
+        uint32_t pressed_time = millis() - ap_input[i].pressed_start_time; 
+
+        if (pressed_time >= BTN_PRESSED_TIME_LONG) // PRESSED_LONG 제일 첫번째. 반대가 되면 PRESSED_MIDDLE에 영원히 걸림
+        {
+          ap_input[i].input_pressed_event = INPUT_EVENT_PRESSED_LONG;
+        }
+        else if (pressed_time >= BTN_PRESSED_TIME_MIDDLE)
+        {
+          ap_input[i].input_pressed_event = INPUT_EVENT_PRESSED_MIDDLE;
+        }
+        break;
       }
-      else if (pressed_time >= BTN_PRESSED_TIME_MIDDLE)
+
+      case BTN_HW_EVENT_RELEASED:
       {
-        printf("눌렀다!! 3초!!!!!%d번째 버튼!!\n", i);
-        ap_input[i].input_pressed_event = INPUT_EVENT_PRESSED_MIDDLE;
-      }
-      else
-      {
-        printf("짧게 눌렀다!! %d번째 버튼!!\n", i);
-        ap_input[i].input_pressed_event = INPUT_EVENT_PRESSED_SHORT;
+        uint32_t pressed_time = millis() - ap_input[i].pressed_start_time;
+        
+        if (pressed_time < BTN_PRESSED_TIME_MIDDLE)
+        {
+          ap_input[i].input_pressed_event = INPUT_EVENT_PRESSED_SHORT;
+        }
+        break;
       }
     }
   }
 }
+
 
 //  두채널 모두 확인해야함
 input_event_t inputGetEvent(uint8_t ch)

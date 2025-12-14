@@ -3,9 +3,6 @@
 
 #include "../../ap_def.h"
 
-#define BTN_PRESSED_TIME_MIDDLE 3000
-#define BTN_PRESSED_TIME_LONG   10000
-
 typedef enum
 {
   INPUT_EVENT_NONE,
