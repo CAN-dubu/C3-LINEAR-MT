@@ -3,9 +3,6 @@
 /**
  * @note 이곳에서는 짧게, 중간, 길게 눌렀는지에 대한 이벤트만을 발생시켜 ap_mode에게 전달함
 */
-
-static void inputUpdatePressedTime(uint8_t ch);
-
 typedef struct
 {
   uint32_t      pressed_start_time;

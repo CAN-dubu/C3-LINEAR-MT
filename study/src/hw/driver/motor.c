@@ -53,22 +53,6 @@ bool motorInit(void)
 
 void motorGoUp(uint8_t ch)
 {
-  if (motor_tbl[ch].pre_state == MOTOR_UP)
-  {
-    motorStop(ch);
-    return;
-  }
-
-  if (motor_tbl[ch].motor_lock == false)
-  {
-    ledcWrite(motor_tbl[ch].p_hw->dir_a_pin, motor_tbl[ch].motor_min_speed);
-    ledcWrite(motor_tbl[ch].p_hw->dir_b_pin, motor_tbl[ch].motor_max_speed);
-    motor_tbl[ch].pre_state = MOTOR_UP;
-  }
-}
-
-void motorGoDown(uint8_t ch)
-{
   if (motor_tbl[ch].pre_state == MOTOR_DOWN)
   {
     motorStop(ch);
@@ -80,6 +64,22 @@ void motorGoDown(uint8_t ch)
     ledcWrite(motor_tbl[ch].p_hw->dir_a_pin, motor_tbl[ch].motor_max_speed);
     ledcWrite(motor_tbl[ch].p_hw->dir_b_pin, motor_tbl[ch].motor_min_speed);
     motor_tbl[ch].pre_state = MOTOR_DOWN;
+  }
+}
+
+void motorGoDown(uint8_t ch)
+{
+  if (motor_tbl[ch].pre_state == MOTOR_UP)
+  {
+    motorStop(ch);
+    return;
+  }
+
+  if (motor_tbl[ch].motor_lock == false)
+  {
+    ledcWrite(motor_tbl[ch].p_hw->dir_a_pin, motor_tbl[ch].motor_min_speed);
+    ledcWrite(motor_tbl[ch].p_hw->dir_b_pin, motor_tbl[ch].motor_max_speed);
+    motor_tbl[ch].pre_state = MOTOR_UP;
   }
 }
 

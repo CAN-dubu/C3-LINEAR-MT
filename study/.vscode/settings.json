@@ -18,7 +18,9 @@
     "motor.h": "c",
     "stdio.h": "c",
     "rf_sample_queue.h": "c",
-    "ap_input.h": "c"
+    "ap_input.h": "c",
+    "ap_remote.h": "c",
+    "ap_mode.h": "c"
   },
   "C_Cpp_Runner.cCompilerPath": "gcc",
   "C_Cpp_Runner.cppCompilerPath": "g++",

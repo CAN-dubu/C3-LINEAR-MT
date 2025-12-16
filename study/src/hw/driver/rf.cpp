@@ -88,7 +88,7 @@ void rfTask(void)
       case RF_VALIDATED:
         if (p_rf->received_data_is_valid)
         {        
-          rf_tbl[i].received_event = RF_EVENT_RECIEVED;
+          rf_tbl[i].received_event = RF_HW_EVENT_RECIEVED;
         }
         p_rf->state = RF_IDLE;
         break;
@@ -137,7 +137,7 @@ static uint16_t rfGetLength(uint8_t ch)
 RF_Event_t rfGetEvent(uint8_t ch)
 {
   RF_Event_t rf_event = rf_tbl[ch].received_event;
-  rf_tbl[ch].received_event = RF_EVENT_NONE; // 읽으면 초기화
+  rf_tbl[ch].received_event = RF_HW_EVENT_NONE; // 읽으면 초기화
   return rf_event;
 }
 

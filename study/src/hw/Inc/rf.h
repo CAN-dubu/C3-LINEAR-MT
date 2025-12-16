@@ -12,8 +12,8 @@ extern "C"
 
 typedef enum 
 {
-  RF_EVENT_NONE,
-  RF_EVENT_RECIEVED,
+  RF_HW_EVENT_NONE,
+  RF_HW_EVENT_RECIEVED,
 } RF_Event_t;
 
 typedef enum

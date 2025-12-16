@@ -5,7 +5,7 @@ bool hwInit(void)
   buttonInit();
   ledInit();
   rfInit();
-  // motorInit();
+  motorInit();
 
   return true;
 }
