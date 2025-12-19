@@ -31,6 +31,17 @@ bool inputInit(void)
  */
 void inputProcess(void)
 {
+  static uint32_t input_precess_last_time = 0;
+  
+  uint32_t now = millis();
+
+  if (now - input_precess_last_time < 10)
+  {
+    return;
+  }
+
+  input_precess_last_time = now;
+
   buttonTask();
 
   for (int i=0; i<BUTTON_PIN_MAX; i++)

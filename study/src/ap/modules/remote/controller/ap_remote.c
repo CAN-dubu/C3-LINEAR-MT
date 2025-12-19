@@ -1,10 +1,5 @@
 #include "ap_remote.h"
 
-#define REMOTE_BTN_A      0x01
-#define REMOTE_BTN_B      0x02
-#define REMOTE_BTN_C      0x04
-#define REMOTE_BTN_D      0x08
-
 #define MIN_SAMPLE_NUM    20 // 샘플 최소수를 여기서 결정하는게 맞을지?? @@
 
 #define NO_SIGNAL_TIMEOUT 80
@@ -71,9 +66,13 @@ void remoteProcess(void)
 
         if (policy == REMOTE_POLICY_LEARN)
         {
-          if (remoteGetCount(i) > MIN_SAMPLE_NUM)
+          if (remoteGetCount(i) > MIN_SAMPLE_NUM) // 20번 이상 일관된 데이터가 들어왔다면
           {
-            ap_remote[i].remote_event = REMOTE_EVENT_SAMPLES_VALIDATED;
+            if (remoteStorageSave(remoteGetData(i))) // flash에 저장
+            {
+              ap_remote[i].remote_event = REMOTE_EVENT_SAMPLES_VALIDATED; // event 발생 <- ap_mode에서 읽어가기
+            }
+           
             policy = REMOTE_POLICY_NORMAL;
           }
         }

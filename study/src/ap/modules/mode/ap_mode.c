@@ -18,8 +18,8 @@ static void modeHandleRemote(void);
 typedef enum
 {
   MODE_NORMAL,
-  MODE_LEARN,
-  MODE_DELETE,
+  MODE_REMOTE_LEARN,
+  MODE_REMOTE_DELETE,
 } ap_mode_state_t;
 
 typedef enum
@@ -56,9 +56,9 @@ bool modeInit(void)
   bool ret = true;
   ap_mode.new_state_entered_time = millis();
   ap_mode.is_learn_ended         = false;
-  ap_mode.state        = MODE_NORMAL;
-  ap_mode.next_state   = MODE_NORMAL;
-  ap_mode.motor_action = MODE_ACTION_NONE;
+  ap_mode.state                  = MODE_NORMAL;
+  ap_mode.next_state             = MODE_NORMAL;
+  ap_mode.motor_action           = MODE_ACTION_NONE;
 
   return ret;
 }
@@ -85,7 +85,7 @@ void modeProcess(void)
       if (timeout > 10000 || ap_mode.is_learn_ended)
       {
         ap_mode.is_learn_ended = false;
-        forceModeChange(MODE_NORMAL); // 강제 state변화의 의미로 쓰임. (예외상황 혹은 강제성이 필요할때 사용)
+        normalModeRun(MODE_NORMAL); // 강제 state변화의 의미로 쓰임. (예외상황 혹은 강제성이 필요할때 사용)
       }
       break;
 
@@ -93,7 +93,7 @@ void modeProcess(void)
       deleteModeRun();
       if (timeout > 3000)
       {
-        forceModeChange(MODE_NORMAL);
+        normalModeRun(MODE_NORMAL);
       }
       break;
   }
@@ -170,7 +170,7 @@ static void modeChangeState(uint8_t new_state)
 
   switch (ap_mode.state) // 명시적으로 remote에게 현재 모드상태를 알린다. -> 리모트는 두가지 동작을 상태에따라 변화하면서 실행한다.
   {
-    case MODE_LEARN:
+    case MODE_REMOTE_LEARN:
       remoteNotifyMode(RF_CH1, REMOTE_POLICY_LEARN);
       break;
 
@@ -178,16 +178,6 @@ static void modeChangeState(uint8_t new_state)
       remoteNotifyMode(RF_CH1, REMOTE_POLICY_NORMAL);
       break;
   }
-}
-
-static void forceModeChange(uint8_t new_state)
-{
-  /**
-   * @note:
-   * 해당 함수는 오직 예외처리용으로 만들어진 함수이다.
-   * 예외에서 모드변경이 직접 필요한 경우를 제외하고는 절대 쓰지 말아야 한다.
-   */
-  modeChangeState(new_state);
 }
 
 /**
@@ -198,26 +188,26 @@ static void modeHandleInput(void)
   input_event_t first_input_event  = inputGetEvent(BTN_CH1);
   input_event_t second_input_event = inputGetEvent(BTN_CH2);
   
-  switch (ap_mode.state)
+  if (ap_mode.state != MODE_NORMAL)
   {
-    case MODE_NORMAL:
-      if (first_input_event == INPUT_EVENT_PRESSED_LONG && second_input_event == INPUT_EVENT_PRESSED_LONG)
-      {
-        ap_mode.next_state = MODE_DELETE;
-      }
-      else if (first_input_event == INPUT_EVENT_PRESSED_MIDDLE && second_input_event == INPUT_EVENT_PRESSED_MIDDLE)
-      {
-        ap_mode.next_state = MODE_LEARN;
-      }
-      else if (first_input_event == INPUT_EVENT_PRESSED_SHORT && second_input_event == INPUT_EVENT_NONE)
-      {
-        ap_mode.motor_action = MODE_ACTION_MOTOR_UP;
-      }
-      else if (first_input_event == INPUT_EVENT_NONE && second_input_event == INPUT_EVENT_PRESSED_SHORT)
-      {
-        ap_mode.motor_action = MODE_ACTION_MOTOR_DOWN;
-      }
-      break; 
+    return;
+  }
+    
+  if (first_input_event == INPUT_EVENT_PRESSED_LONG && second_input_event == INPUT_EVENT_PRESSED_LONG)
+  {
+    ap_mode.next_state = MODE_DELETE;
+  }
+  else if (first_input_event == INPUT_EVENT_PRESSED_MIDDLE && second_input_event == INPUT_EVENT_PRESSED_MIDDLE)
+  {
+    ap_mode.next_state = MODE_LEARN;
+  }
+  else if (first_input_event == INPUT_EVENT_PRESSED_SHORT && second_input_event == INPUT_EVENT_NONE)
+  {
+    ap_mode.motor_action = MODE_ACTION_MOTOR_UP;
+  }
+  else if (first_input_event == INPUT_EVENT_NONE && second_input_event == INPUT_EVENT_PRESSED_SHORT)
+  {
+    ap_mode.motor_action = MODE_ACTION_MOTOR_DOWN;
   }
 }
 

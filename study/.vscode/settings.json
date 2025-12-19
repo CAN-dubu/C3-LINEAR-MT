@@ -20,7 +20,9 @@
     "rf_sample_queue.h": "c",
     "ap_input.h": "c",
     "ap_remote.h": "c",
-    "ap_mode.h": "c"
+    "ap_mode.h": "c",
+    "remote_decoder.h": "c",
+    "remote_storage.h": "c"
   },
   "C_Cpp_Runner.cCompilerPath": "gcc",
   "C_Cpp_Runner.cppCompilerPath": "g++",

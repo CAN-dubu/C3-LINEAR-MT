@@ -2,6 +2,8 @@
 #define AP_MODULE_REMOTE_H_
 
 #include "../../ap_def.h"
+#include "../common/rf_def.c"
+#include "../storage/remote_storage.h"
 
 typedef enum  // 연속적 데이터 (20개 이상을 검사할때) 와 3~4개 정도의 짧은 데이터를 구별
 {
