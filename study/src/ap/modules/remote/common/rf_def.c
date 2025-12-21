@@ -2,14 +2,14 @@
 #define RF_DEF_H_
 
 /**
-* @brief 리모컨 버튼 상수
+* @brief 리모컨 버튼 상수, TYPE B 구현 고민
 */
 #define REMOTE_TYPE_A_BTN_A 0x01
 #define REMOTE_TYPE_A_BTN_B 0x02
 #define REMOTE_TYPE_A_BTN_C 0x04
 #define REMOTE_TYPE_A_BTN_D 0x08  
 
-#define REMOTE_TYPE_B_BTN_A 0x04
+#define REMOTE_TYPE_B_BTN_A 0x04 
 #define REMOTE_TYPE_B_BTN_B 0x08 
 #define REMOTE_TYPE_B_BTN_C 0x01
 #define REMOTE_TYPE_B_BTN_D 0x02
@@ -29,9 +29,6 @@ typedef enum
 /**
 * @brief 에러 타입
 */
-#define STORAGE_ERROR_ALREADY_EXIST -1
-#define STORAGE_ERROR_FULL_SPACE    -2
-#define STORAGE_
 
 
 #endif

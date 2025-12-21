@@ -10,7 +10,7 @@
 static void normalModeRun(void);
 static void learnModeRun(void);
 static void deleteModeRun(void);
-static void modeChangeState(uint8_t new_state);
+static void modeChangeState(ap_mode_state_t new_state);
 static void modeHandleTimeIssue(void);
 static void modeHandleInput(void);
 static void modeHandleRemote(void);
@@ -40,15 +40,7 @@ typedef struct
   bool               is_learn_ended; 
 } ap_mode_t;
 
-typedef struct
-{
-  uint32_t           recieved_remote_code;
-  bool               is_valid_data;
-} ap_mode_data_t;
-
-
 static ap_mode_t ap_mode;
-static ap_mode_data_t ap_mode_data = {0,};
 
 bool modeInit(void)
 {
@@ -124,25 +116,9 @@ static void normalModeRun(void)
 
 static void learnModeRun(void)
 {
-  if(ap_mode_data.is_valid_data)
+  if(ap_mode.is_learn_ended)
   {
     allLedTogglePin(100);
-
-    // flash 저장 (가지고 있는 데이터로)
-    if (ap_mode.is_learn_ended == false)
-    {
-      bool ret = remoteStorageSave(ap_mode_data.recieved_remote_code);
-
-      if (ret)
-      {
-        ap_mode.is_learn_ended = true;
-      }
-      else
-      {
-        printf("Error : flash save issue\n");
-        ap_mode.is_learn_ended = false;
-      }
-    }
   }
   else
   {
@@ -158,7 +134,7 @@ static void deleteModeRun(void)
 /**
  * @brief next_state기반으로 현재 state를 변경하는 함수
  */
-static void modeChangeState(uint8_t new_state)
+static void modeChangeState(ap_mode_state_t new_state)
 {
   if (ap_mode.state == new_state)
   {
@@ -168,7 +144,7 @@ static void modeChangeState(uint8_t new_state)
   ap_mode.state = new_state;
   ap_mode.new_state_entered_time = millis();
 
-  switch (ap_mode.state) // 명시적으로 remote에게 현재 모드상태를 알린다. -> 리모트는 두가지 동작을 상태에따라 변화하면서 실행한다.
+  switch (ap_mode.state) // 명시적으로 remote에게 현재 모드상태를 알린다. -> 리모트는 두가지 동작을 상태에따라 변화하면서 실행한다. (짧은 데이터를 검증할지, 긴데이터를 연속으로 검증할지)
   {
     case MODE_REMOTE_LEARN:
       remoteNotifyMode(RF_CH1, REMOTE_POLICY_LEARN);
@@ -191,9 +167,7 @@ static void modeHandleTimeIssue(void)
       {
         if (delay > 3000)
         {
-          printf("remote_controller succeed to learn\n");
-          ap_mode_data.recieved_remote_code = 0;
-          ap_mode_data.is_valid_data = false;
+          printf("succeed to learn\n");
           ap_mode.is_learn_ended = false;
           ap_mode.next_state = MODE_NORMAL;
         }
@@ -256,7 +230,7 @@ static void modeHandleRemote(void)
   {
     case MODE_NORMAL:
         
-        switch (remote_event) // @@ 이제 여기서 저장됀 플래쉬속 리모컨 주소와 매칭시켜야함.. 맞으면 아래 내용 실행하는걸로
+        switch (remote_event) 
         {
           case REMOTE_EVENT_BUTTON_A:
             ap_mode.motor_action = MODE_ACTION_MOTOR_UP;
@@ -267,11 +241,15 @@ static void modeHandleRemote(void)
             break;
 
           case REMOTE_EVENT_BUTTON_C:
-            // printf("motor stop\n");
+            ap_mode.motor_action = MODE_ACTION_MOTOR_STOP;
             break;
 
           case REMOTE_EVENT_BUTTON_D:
-            // printf("motor lock\n");
+            ap_mode.motor_action = MODE_ACTION_MOTOR_LOCK;
+            break;
+
+          case REMOTE_EVENT_NO_DATA_IN_FLASH:
+            printf("need to learn this remote_controller\n");
             break;
 
           case REMOTE_EVENT_BUTTON_UNKNOWN: 
@@ -280,7 +258,7 @@ static void modeHandleRemote(void)
         }
       break;
     
-    case MODE_REMOTE_LEARN:  
+    case MODE_REMOTE_LEARN:  // ap_remote단에서 flash저장까지 마치고온다. 그리고 flash 저장에 실패했을때를 대비하여 여러가지 에러 처리를 여기에 구현하는것도 나쁘지 않아보임.
         switch (remote_event)
         {
           case REMOTE_EVENT_SAMPLES_INVALIDATED:
@@ -288,10 +266,13 @@ static void modeHandleRemote(void)
             ap_mode.next_state = MODE_NORMAL;
             break;
 
-          case REMOTE_EVENT_SAMPLES_VALIDATED:
-            ap_mode_data.recieved_remote_code = remoteGetData(RF_CH1);
-            ap_mode_data.is_valid_data = true;
-            printf("valid data\n");
+          case REMOTE_EVENT_SAMPLES_STORED_IN_FLASH:
+            ap_mode.is_learn_ended = true;
+            break;
+
+          case REMOTE_EVENT_FLASH_ERROR:
+            printf("flash error\n");
+            break;
         }
       break;
   }

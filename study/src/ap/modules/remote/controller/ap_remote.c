@@ -2,12 +2,13 @@
 
 #define MIN_SAMPLE_NUM    20 // 샘플 최소수를 여기서 결정하는게 맞을지?? @@
 
-#define NO_SIGNAL_TIMEOUT 80
+#define NO_SIGNAL_TIMEOUT 80 // 스코프 측정 결과 연속데이터 수신상태에서 데이터간의 간격이 평균 71~75ms 정도로 측정됨.
 
 static void remoteResetAll(uint8_t ch);
 static void remoteHandleRfData(uint8_t ch);
-static void remoteHandleTimeout(uint8_t ch);
-static void remoteDecodeButton(uint8_t ch, uint32_t raw_data);
+static void remoteHandleDebounce(uint8_t ch);
+static void remoteResetAll(uint8_t ch);
+static void remoteGenerateButtonEvent(uint8_t ch, uint32_t decoded_btn_code);
 
 typedef enum
 {
@@ -17,14 +18,13 @@ typedef enum
 
 typedef struct
 {
-  remote_state_t state;
-  uint8_t        count;
-  uint32_t       ref_data;
-  uint32_t       received_time;
-  remote_event_t remote_event;
+  remote_state_t  state;
+  uint8_t         count;
+  uint32_t        ref_data;
+  uint32_t        received_time;
+  remote_policy_t policy;
+  remote_event_t  remote_event;
 } ap_remote_t;
-
-static remote_policy_t policy;
 
 ap_remote_t ap_remote[RF_MAX_CH];
 
@@ -32,13 +32,12 @@ bool remoteInit(void)
 {
   bool ret = true;
   
-  policy = REMOTE_POLICY_NORMAL;
-
   for (int i=0; i<RF_MAX_CH; i++)
   {
     ap_remote[i].count          = 0;
     ap_remote[i].ref_data       = 0;
     ap_remote[i].received_time  = 0;
+    ap_remote[i].policy         = REMOTE_POLICY_NORMAL;
     ap_remote[i].state          = REMOTE_STATE_IDLE;
     ap_remote[i].remote_event   = REMOTE_EVENT_NONE;
   }
@@ -64,24 +63,29 @@ void remoteProcess(void)
       case RF_HW_EVENT_RECIEVED:
         remoteHandleRfData(i); 
 
-        if (policy == REMOTE_POLICY_LEARN)
+        if (ap_remote[i].policy == REMOTE_POLICY_LEARN)
         {
           if (remoteGetCount(i) > MIN_SAMPLE_NUM) // 20번 이상 일관된 데이터가 들어왔다면
           {
             if (remoteStorageSave(remoteGetData(i))) // flash에 저장
             {
-              ap_remote[i].remote_event = REMOTE_EVENT_SAMPLES_VALIDATED; // event 발생 <- ap_mode에서 읽어가기
+              ap_remote[i].remote_event = REMOTE_EVENT_SAMPLES_STORED_IN_FLASH; // event 발생 <- ap_mode에서 읽어가기
+            }
+            else
+            {
+              // @@에러처리 필요
+              ap_remote[i].remote_event = REMOTE_EVENT_FLASH_ERROR;
             }
            
-            policy = REMOTE_POLICY_NORMAL;
+            ap_remote[i].policy = REMOTE_POLICY_NORMAL;
           }
         }
         break;
 
       case RF_HW_EVENT_NONE:
-        if (policy == REMOTE_POLICY_NORMAL)
+        if (ap_remote[i].policy == REMOTE_POLICY_NORMAL)
         {
-          remoteHandleTimeout(i); 
+          remoteHandleDebounce(i); 
         }
         break;
     }
@@ -112,53 +116,57 @@ static void remoteHandleRfData(uint8_t ch)
       }
       else // 첫번째 데이터와는 다른 데이터 수신 -> 에러 발생, 별도의 핸들링은 어떻게? @@ 고민 POINT
       {
-        ap_remote[ch].count        = 0;
-        ap_remote[ch].ref_data     = 0;
-        ap_remote[ch].state        = REMOTE_STATE_IDLE;
+        remoteResetAll(ch);
+
         ap_remote[ch].remote_event = REMOTE_EVENT_SAMPLES_INVALIDATED;
 
-        if (policy == REMOTE_POLICY_LEARN)
+        if (ap_remote[ch].policy == REMOTE_POLICY_LEARN)
         {
-          policy = REMOTE_POLICY_NORMAL;
+          ap_remote[ch].policy = REMOTE_POLICY_NORMAL;
         }
       }
       break;
   }
 }
 
-static void remoteHandleTimeout(uint8_t ch)
+static void remoteHandleDebounce(uint8_t ch)
 {
   if (ap_remote[ch].state == REMOTE_STATE_RECEIVING) 
   {
     if (millis() - ap_remote[ch].received_time > NO_SIGNAL_TIMEOUT)
     {
-      remoteDecodeButton(ch, remoteGetData(ch));
-
-      ap_remote[ch].count        = 0;  
-      ap_remote[ch].state        = REMOTE_STATE_IDLE;
+      if (remoteInfoContained(remoteGetData(ch))) // 플래쉬에 저장되어 있다면..
+      {
+        uint8_t btn = decodeRemotesButton(remoteGetData(ch)); 
+        remoteGenerateButtonEvent(ch, btn); // 버튼 이벤트를 발생시킨 후 리셋한다. 
+      }
+      else
+      {
+        ap_remote[ch].remote_event = REMOTE_EVENT_NO_DATA_IN_FLASH;
+      }
+     
+      remoteResetAll(ch);
     }
   }
 }
 
-static void remoteDecodeButton(uint8_t ch, uint32_t raw_data)
+static void remoteGenerateButtonEvent(uint8_t ch, uint32_t decoded_btn_code)
 {
-  uint8_t button = raw_data & 0x0F; // (리모컨의)16진수에서 첫번째 자리데이터 = 버튼데이터, 나머지는 주소데이터
-
-  switch (button)
+  switch (decoded_btn_code)
   {
-    case REMOTE_BTN_A:
+    case REMOTE_TYPE_A_BTN_A:
       ap_remote[ch].remote_event = REMOTE_EVENT_BUTTON_A;
       break;
 
-    case REMOTE_BTN_B:
+    case REMOTE_TYPE_A_BTN_B:
       ap_remote[ch].remote_event = REMOTE_EVENT_BUTTON_B;
       break;
 
-    case REMOTE_BTN_C:
+    case REMOTE_TYPE_A_BTN_C:
       ap_remote[ch].remote_event = REMOTE_EVENT_BUTTON_C;
       break;
 
-    case REMOTE_BTN_D:
+    case REMOTE_TYPE_A_BTN_D:
       ap_remote[ch].remote_event = REMOTE_EVENT_BUTTON_D;
       break;
 
@@ -166,6 +174,13 @@ static void remoteDecodeButton(uint8_t ch, uint32_t raw_data)
       ap_remote[ch].remote_event = REMOTE_EVENT_BUTTON_UNKNOWN;
       break;
   }
+}
+
+static void remoteResetAll(uint8_t ch)
+{
+  ap_remote[ch].count        = 0;
+  ap_remote[ch].ref_data     = 0;
+  ap_remote[ch].state        = REMOTE_STATE_IDLE;
 }
 
 uint8_t remoteGetCount(uint8_t ch)
@@ -208,5 +223,5 @@ remote_event_t remoteGetEvent(uint8_t ch)
 void remoteNotifyMode(uint8_t ch, remote_policy_t next_policy)
 {
   ap_remote[ch].count = 0; 
-  policy = next_policy;
+  ap_remote[ch].policy = next_policy;
 }

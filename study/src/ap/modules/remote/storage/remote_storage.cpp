@@ -1,5 +1,9 @@
-#include "remote_manager.h"
+#include "remote_storage.h"
 
+static bool remoteStorageGetSlot(uint8_t slot);
+static int remoteStorageGetNextSlot(void);
+static bool remoteStorageDelete(uint8_t slot);
+static void remoteSetNamespace(char *buf, uint8_t slot);
 
 static Preferences prefs;
 
@@ -59,38 +63,54 @@ void remoteStorageDeleteAll(uint8_t max_slot)
   }
 }
 
-/**
- * @brief static 함수들
- */
-static int remoteInfoContained(uint32_t address)
+bool remoteInfoContained(uint32_t address) // @@수정필 -> raw데이터로 받아야함.
 {
-  uint32_t loaded_address = 0;
-
-  for (int i=0; i<MAX_REMOTE_CONTROLLER_NUM; i++)
+  if (address == 0)
   {
-    loaded_address = preferences.getUInt("address", 0);
-    
-    if (loaded_address == address)
+    return false;
+  }
+
+  char name_space[16];
+
+  for (int i = 0; i < MAX_REMOTE_CONTROLLER_NUM; i++)
+  {
+    makeNamespace(name_space, i);
+
+    if (!prefs.begin(name_space, true)) // read-only
     {
-      return true;
+      continue;
+    }
+
+    uint32_t stored_address = prefs.getUInt("address", 0);
+    uint16_t stored_crc     = prefs.getUShort("crc", 0);
+
+    prefs.end();
+
+    if (stored_address == 0)
+    {
+      continue; // empty slot
+    }
+
+    uint16_t calc_crc =
+      crc16_ccitt((uint8_t *)&stored_address, sizeof(stored_address));
+
+    if (calc_crc != stored_crc)
+    {
+      continue; // 데이터 깨짐
+    }
+
+    if (stored_address == address)
+    {
+      return true; // FOUND
     }
   }
 
   return false;
 }
 
-static int remoteStorageGetNextSlot(void)
-{
-  for (int i = 0; i < MAX_REMOTE_CONTROLLER_NUM; i++)
-  {
-    if (remoteStorageGetSlot(i) == false)
-    {
-      return i;
-    }
-  }
-  return -1; // FULL
-}
-
+/**
+ * @brief static 함수들
+ */
 static bool remoteStorageGetSlot(uint8_t slot)
 {
   char name_space[16];
@@ -117,7 +137,19 @@ static bool remoteStorageGetSlot(uint8_t slot)
   return (crc_calc == crc_stored); // 저장된 데이터가 깨져있다면 false 
 }
 
-bool remoteStorageDelete(uint8_t slot)
+static int remoteStorageGetNextSlot(void)
+{
+  for (int i = 0; i < MAX_REMOTE_CONTROLLER_NUM; i++)
+  {
+    if (remoteStorageGetSlot(i) == false)
+    {
+      return i;
+    }
+  }
+  return -1; // FULL
+}
+
+static bool remoteStorageDelete(uint8_t slot)
 {
   char name_space[16];
   makeNamespace(name_space, slot);
