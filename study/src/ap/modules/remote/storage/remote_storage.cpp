@@ -45,7 +45,7 @@ bool remoteStorageSave(uint32_t raw)
   
   prefs.end(); // prefs 닫기
 
-  return true;;
+  return true;
 }
 
 /**

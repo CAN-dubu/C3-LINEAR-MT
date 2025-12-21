@@ -11,13 +11,13 @@ static void normalModeRun(void);
 static void learnModeRun(void);
 static void deleteModeRun(void);
 static void modeChangeState(uint8_t new_state);
-static void forceModeChange(uint8_t new_state);
+static void modeHandleTimeIssue(void);
 static void modeHandleInput(void);
 static void modeHandleRemote(void);
 
 typedef enum
 {
-  MODE_NORMAL,
+  MODE_NORMAL = 0,
   MODE_REMOTE_LEARN,
   MODE_REMOTE_DELETE,
 } ap_mode_state_t;
@@ -36,14 +36,13 @@ typedef struct
   ap_mode_state_t    state;
   ap_mode_state_t    next_state;
   ap_mode_action_t   motor_action;
-  uint32_t           new_state_entered_time; 
+  uint32_t           new_state_entered_time;
   bool               is_learn_ended; 
 } ap_mode_t;
 
 typedef struct
 {
   uint32_t           recieved_remote_code;
-  uint32_t           confirmed_vaild_time;
   bool               is_valid_data;
 } ap_mode_data_t;
 
@@ -65,36 +64,30 @@ bool modeInit(void)
 
 void modeProcess(void)
 {
-  ap_mode.next_state = ap_mode.state; // 명시적으로 초기화 해주지 않으면 이벤트가 일어나지 않아도 계속 next_mode로 상태전이하게 된다.
+  // 1) 이번 tick의 기본 next_state는 현재 state
+  ap_mode.next_state = ap_mode.state;
 
+  // 2) 이벤트 처리: 입력 / 리모컨 / 딜레이와 타임아웃
   modeHandleInput();
   modeHandleRemote();
+  modeHandleTimeIssue();
 
-  modeChangeState(ap_mode.next_state); // 실제 핸들러에게 변화를 받아, state를 변화시키는 부분
+  // 3) 상태 전이 확정
+  modeChangeState(ap_mode.next_state);
 
-  uint32_t timeout = millis() - ap_mode.new_state_entered_time;
-  
+  // 4) 현재 상태에 따른 동작 수행
   switch (ap_mode.state)
   {
     case MODE_NORMAL:
       normalModeRun();
       break;
 
-    case MODE_LEARN:
+    case MODE_REMOTE_LEARN:
       learnModeRun();
-      if (timeout > 10000 || ap_mode.is_learn_ended)
-      {
-        ap_mode.is_learn_ended = false;
-        normalModeRun(MODE_NORMAL); // 강제 state변화의 의미로 쓰임. (예외상황 혹은 강제성이 필요할때 사용)
-      }
       break;
 
-    case MODE_DELETE:
+    case MODE_REMOTE_DELETE:
       deleteModeRun();
-      if (timeout > 3000)
-      {
-        normalModeRun(MODE_NORMAL);
-      }
       break;
   }
 }
@@ -134,23 +127,27 @@ static void learnModeRun(void)
   if(ap_mode_data.is_valid_data)
   {
     allLedTogglePin(100);
-    
-    uint32_t timeout = millis() - ap_mode_data.confirmed_vaild_time;
 
     // flash 저장 (가지고 있는 데이터로)
-  
-    if (timeout > 3000)
+    if (ap_mode.is_learn_ended == false)
     {
-      ap_mode_data.recieved_remote_code = 0;
-      ap_mode_data.is_valid_data = false;
-      ap_mode.is_learn_ended = true;
-      ap_mode.next_state = MODE_NORMAL;
+      bool ret = remoteStorageSave(ap_mode_data.recieved_remote_code);
+
+      if (ret)
+      {
+        ap_mode.is_learn_ended = true;
+      }
+      else
+      {
+        printf("Error : flash save issue\n");
+        ap_mode.is_learn_ended = false;
+      }
     }
   }
   else
   {
     allLedTogglePin(500);
-  }  
+  }
 }
 
 static void deleteModeRun(void)
@@ -158,6 +155,9 @@ static void deleteModeRun(void)
   allLedTogglePin(100);
 }
 
+/**
+ * @brief next_state기반으로 현재 state를 변경하는 함수
+ */
 static void modeChangeState(uint8_t new_state)
 {
   if (ap_mode.state == new_state)
@@ -180,6 +180,40 @@ static void modeChangeState(uint8_t new_state)
   }
 }
 
+static void modeHandleTimeIssue(void)
+{
+  uint32_t delay = millis() - ap_mode.new_state_entered_time;
+
+  switch (ap_mode.state)
+  {
+    case MODE_REMOTE_LEARN:
+      if (ap_mode.is_learn_ended)
+      {
+        if (delay > 3000)
+        {
+          printf("remote_controller succeed to learn\n");
+          ap_mode_data.recieved_remote_code = 0;
+          ap_mode_data.is_valid_data = false;
+          ap_mode.is_learn_ended = false;
+          ap_mode.next_state = MODE_NORMAL;
+        }
+      }
+      else if (delay > 10000)
+      {
+        printf("learning failed by timeout issue \n");
+        ap_mode.next_state = MODE_NORMAL;
+      }
+      break;
+      
+    case MODE_REMOTE_DELETE:
+      if (delay > 3000)
+      {
+        ap_mode.next_state = MODE_NORMAL;
+      }
+      break;
+  }
+}
+
 /**
  * @brief inputEvent를 핸들링하는 함수
  */
@@ -195,11 +229,11 @@ static void modeHandleInput(void)
     
   if (first_input_event == INPUT_EVENT_PRESSED_LONG && second_input_event == INPUT_EVENT_PRESSED_LONG)
   {
-    ap_mode.next_state = MODE_DELETE;
+    ap_mode.next_state = MODE_REMOTE_DELETE;
   }
   else if (first_input_event == INPUT_EVENT_PRESSED_MIDDLE && second_input_event == INPUT_EVENT_PRESSED_MIDDLE)
   {
-    ap_mode.next_state = MODE_LEARN;
+    ap_mode.next_state = MODE_REMOTE_LEARN;
   }
   else if (first_input_event == INPUT_EVENT_PRESSED_SHORT && second_input_event == INPUT_EVENT_NONE)
   {
@@ -246,7 +280,7 @@ static void modeHandleRemote(void)
         }
       break;
     
-    case MODE_LEARN:  
+    case MODE_REMOTE_LEARN:  
         switch (remote_event)
         {
           case REMOTE_EVENT_SAMPLES_INVALIDATED:
@@ -257,8 +291,7 @@ static void modeHandleRemote(void)
           case REMOTE_EVENT_SAMPLES_VALIDATED:
             ap_mode_data.recieved_remote_code = remoteGetData(RF_CH1);
             ap_mode_data.is_valid_data = true;
-            ap_mode_data.confirmed_vaild_time = millis();
-            printf("valid data inputs\n");
+            printf("valid data\n");
         }
       break;
   }
