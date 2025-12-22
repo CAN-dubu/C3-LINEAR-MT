@@ -137,7 +137,7 @@ static void modeHandleTimeIssue(void)
           ap_mode.next_state = MODE_NORMAL;
         }
       }
-      else if (delay > 20000)
+      else if (delay > 5000) // 10초 -> 5초 딜레이
       {
         printf("learning failed by timeout issue \n");
         ap_mode.next_state = MODE_NORMAL;

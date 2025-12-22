@@ -51,7 +51,7 @@ void loop()
 
   static uint8_t mode = NORMAL_MODE;
   static uint8_t mode_req = NORMAL_MODE;
-  bool is_first = false;
+  bool is_first = false;  
 
   if (modeEventGet() == LEARN_MODE_BEGIN_EVENT) 
   {
