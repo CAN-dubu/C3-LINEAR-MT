@@ -1,8 +1,8 @@
 #ifndef MODULE_REMOTE_DECODER_H_
 #define MODULE_REMOTE_DECODER_H_
 
-#include "../../ap_def.h"
-#include "../common/rf_def.c"
+#include "../../../ap_def.h"
+#include "../common/rf_def.h"
 
 remote_type_t decodeRemotesType(uint32_t raw);
 uint32_t decodeRemotesAddress(uint32_t raw);

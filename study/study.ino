@@ -40,8 +40,6 @@ void loop()
 {
   // put your main code here, to run repeatedly:
   apMain();
-  // updateEvent();
-
 /**
  *  =======normal, learn구현 후 마지막에 생각 할 부분 ==============
  * 
@@ -85,96 +83,3 @@ void loop()
  */
   
 }
-
-// void updateState(void)
-// {
-//   modeUpdate();
-// }
-
-// void updateEvent(void)
-// {
-//   buttonEventHandler();
-//   rfEventHandler(RF_CH1);
-// }
-
-// void getButtonState(void)
-// {
-//   uint32_t result = buttonGetData();
-
-//   switch (result)
-//   {
-//     case 0b11:
-//     uint32_t timer = buttonGetPressedTime();
-//     Serial.printf("time:%d\n",timer);
-//     break;
-//   }
-// }
-
-// void modeUpdate(void)
-// {
-//   uint32_t timeout = millis() - remote_mode.learn_mode_enter_time;
-
-//   switch(remote_mode.mode)
-//   {
-//     case REMOTE_IDLE:
-//       // allLedOff();
-//       break;
-
-//     case REMOTE_LEARN:
-//       // allLedTogglePin(500);
-      
-//       // if (sampleQueueGet(&remote_mode.rf_rx_code)) // 이 함수가 return으로 total값을 하는게 맞겠음. get() > 20 이런식으로
-//       // {
-//       //   Serial.printf("Learned: 0x%X\n", remote_mode.rf_rx_code);
-//       // }
-
-//       // if (timeout > 10000)
-//       // {
-//       //   changeRemoteState(REMOTE_IDLE);  
-//       // }
-//       break;
-
-//     case REMOTE_DELETE:
-//       // allLedTogglePin(100);
-      
-//       // if (timeout > 3000)
-//       // {
-//       //   changeRemoteState(REMOTE_IDLE);
-//       // }
-//       break;
-//   }
-// }
-
-/**
- * @brief main state를 변경하는 함수, 진입 시 modeUpdate() 내에서 사용 할 타이머가 작동한다.
- * @@@ 이름생각!!!!!! 이건 main의 learn모드에서만 작동할예정. 근데 계획 변경 가능!!!
- */
-// void changeRemoteState(remote_state_t new_state)
-// {
-//   if (remote_mode.mode == new_state)
-//   {
-//     return;
-//   }
-
-//   remote_mode.mode = new_state;
-//   remote_mode.learn_mode_enter_time = millis();
-// }
-
-
-
-// /**
-//  * @brief RF신호에 대한 이벤트 핸들러, sampleQueueWrite말고 다른거 생각;; sample이름은 너무 general함.
-//  */
-// void rfEventHandler(uint8_t ch)
-// {
-//   RF_Event_t rf_event = rfGetEvent(ch);
-
-//   if (rf_event == RF_EVENT_RECIEVED)
-//   {
-//     // Serial.println("recieved");
-//     // remote_mode.rf_event_occured = true;
-//     remote_mode.rf_rx_code = rfGetData(ch);
-//     rfSampleQueueWrite(remote_mode.rf_rx_code);
-//   }
-//   // sampling? rf 신호 stoped event를 받으면..
-// }

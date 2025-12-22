@@ -22,7 +22,10 @@
     "ap_remote.h": "c",
     "ap_mode.h": "c",
     "remote_decoder.h": "c",
-    "remote_storage.h": "c"
+    "remote_storage.h": "c",
+    "rf_def.c": "cpp",
+    "ap_motor.h": "c",
+    "rf_def.h": "c"
   },
   "C_Cpp_Runner.cCompilerPath": "gcc",
   "C_Cpp_Runner.cppCompilerPath": "g++",

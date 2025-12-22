@@ -15,22 +15,6 @@ static void modeHandleTimeIssue(void);
 static void modeHandleInput(void);
 static void modeHandleRemote(void);
 
-typedef enum
-{
-  MODE_NORMAL = 0,
-  MODE_REMOTE_LEARN,
-  MODE_REMOTE_DELETE,
-} ap_mode_state_t;
-
-typedef enum
-{
-  MODE_ACTION_NONE,
-  MODE_ACTION_MOTOR_UP,
-  MODE_ACTION_MOTOR_DOWN,
-  MODE_ACTION_MOTOR_STOP,
-  MODE_ACTION_MOTOR_LOCK,
-} ap_mode_action_t; //실제로 이 상태값을 모터ap단에서 받아 해석하게끔, motor up -> motor up 이면 stop은 ap motor단에서 구현해야함.
-
 typedef struct
 {
   ap_mode_state_t    state;
@@ -88,29 +72,10 @@ static void normalModeRun(void)
 {
   allLedOff();
 
-  switch (ap_mode.motor_action)
+  if (ap_mode.motor_action != MODE_ACTION_NONE)
   {
-    case MODE_ACTION_MOTOR_UP:
-      printf("motor up\n");
-      motorGoUp(MOTOR_CH1); // 임시test: hw_motor로 테스트중..
-      // ap motor단에 전달할 함수 ,apMotorRequestAction()?? 이름고민..
-      break;
-    case MODE_ACTION_MOTOR_DOWN:
-      printf("motor down\n");
-      motorGoDown(MOTOR_CH1);
-      // ap motor단에 전달할 함수
-      break;
-    case MODE_ACTION_MOTOR_STOP:
-      // ap motor단에 전달할 함수
-      break;
-    case MODE_ACTION_MOTOR_LOCK:
-      // ap motor단에 전달할 함수
-      break;
-
-    default:
-      break;
+    motorRequestAction(MOTOR_CH1, ap_mode.motor_action);
   }
-
   ap_mode.motor_action = MODE_ACTION_NONE; // 이 줄을 추가 해주지 않으면 영원히 motor가 움직이게 된다.
 }
 
@@ -172,7 +137,7 @@ static void modeHandleTimeIssue(void)
           ap_mode.next_state = MODE_NORMAL;
         }
       }
-      else if (delay > 10000)
+      else if (delay > 20000)
       {
         printf("learning failed by timeout issue \n");
         ap_mode.next_state = MODE_NORMAL;
@@ -182,6 +147,8 @@ static void modeHandleTimeIssue(void)
     case MODE_REMOTE_DELETE:
       if (delay > 3000)
       {
+        printf("all deleted\n");
+        remoteStorageDeleteAll();
         ap_mode.next_state = MODE_NORMAL;
       }
       break;
@@ -258,7 +225,7 @@ static void modeHandleRemote(void)
         }
       break;
     
-    case MODE_REMOTE_LEARN:  // ap_remote단에서 flash저장까지 마치고온다. 그리고 flash 저장에 실패했을때를 대비하여 여러가지 에러 처리를 여기에 구현하는것도 나쁘지 않아보임.
+    case MODE_REMOTE_LEARN:  // ap_remote단에서 flash저장까지 마치고 온다. 그리고 flash 저장에 실패했을때를 대비하여 여러가지 에러 처리를 여기에 구현하는것도 나쁘지 않아보임.
         switch (remote_event)
         {
           case REMOTE_EVENT_SAMPLES_INVALIDATED:

@@ -1,9 +1,11 @@
+#include <Preferences.h>
 #include "remote_storage.h"
 
 static bool remoteStorageGetSlot(uint8_t slot);
 static int remoteStorageGetNextSlot(void);
 static bool remoteStorageDelete(uint8_t slot);
 static void remoteSetNamespace(char *buf, uint8_t slot);
+static uint16_t crc16_ccitt(uint8_t *data, uint32_t len);
 
 static Preferences prefs;
 
@@ -35,7 +37,7 @@ bool remoteStorageSave(uint32_t raw)
     return false; // FULL
   }
 
-  makeNamespace(remote_name_space, slot);
+  remoteSetNamespace(remote_name_space, slot);
 
   if (!prefs.begin(remote_name_space, false)) // 읽기, 쓰기 전용으로 prefs열기
   {
@@ -55,7 +57,7 @@ bool remoteStorageSave(uint32_t raw)
 /**
  * @brief 공장 초기화 함수
  */
-void remoteStorageDeleteAll(uint8_t max_slot)
+void remoteStorageDeleteAll(void)
 {
   for (int i=1; i<=MAX_REMOTE_CONTROLLER_NUM; i++)
   {
@@ -63,18 +65,20 @@ void remoteStorageDeleteAll(uint8_t max_slot)
   }
 }
 
-bool remoteInfoContained(uint32_t address) // @@수정필 -> raw데이터로 받아야함.
+bool remoteInfoContained(uint32_t raw) // @@수정필 -> raw데이터로 받아야함.
 {
-  if (address == 0)
+  if (raw == 0)
   {
     return false;
   }
+
+  uint32_t address = decodeRemotesAddress(raw);
 
   char name_space[16];
 
   for (int i = 0; i < MAX_REMOTE_CONTROLLER_NUM; i++)
   {
-    makeNamespace(name_space, i);
+    remoteSetNamespace(name_space, i);
 
     if (!prefs.begin(name_space, true)) // read-only
     {
@@ -114,7 +118,7 @@ bool remoteInfoContained(uint32_t address) // @@수정필 -> raw데이터로 받
 static bool remoteStorageGetSlot(uint8_t slot)
 {
   char name_space[16];
-  makeNamespace(name_space, slot);
+  remoteSetNamespace(name_space, slot);
 
   if (!prefs.begin(name_space, true))
   {
@@ -152,7 +156,7 @@ static int remoteStorageGetNextSlot(void)
 static bool remoteStorageDelete(uint8_t slot)
 {
   char name_space[16];
-  makeNamespace(name_space, slot);
+  remoteSetNamespace(name_space, slot);
 
   if (!prefs.begin(name_space, false))
   {
@@ -170,4 +174,21 @@ static void remoteSetNamespace(char *buf, uint8_t slot)
   sprintf(buf, "remote_%d", slot);
 }
 
-#endif
+static uint16_t crc16_ccitt(uint8_t *data, uint32_t len)
+{
+  uint16_t crc = 0xFFFF;
+  uint8_t *ptr = data;
+  
+  while (len--)
+  {
+    crc ^= *ptr++ << 8;
+    for (uint8_t i = 0; i < 8; ++i)
+    {
+      if (crc & 0x8000)
+        crc = (crc << 1) ^ 0x1021;
+      else
+        crc = crc << 1;
+    }
+  }
+  return crc;
+}

@@ -17,8 +17,6 @@ typedef struct
 {
   uint16_t            motor_max_speed;
   uint8_t             motor_min_speed;
-  bool                motor_lock;
-  motor_state_t       pre_state;
   const motor_hw_t   *p_hw;
 } motor_t;
 
@@ -53,53 +51,19 @@ bool motorInit(void)
 
 void motorGoUp(uint8_t ch)
 {
-  if (motor_tbl[ch].pre_state == MOTOR_DOWN)
-  {
-    motorStop(ch);
-    return;
-  }
-
-  if (motor_tbl[ch].motor_lock == false)
-  {
-    ledcWrite(motor_tbl[ch].p_hw->dir_a_pin, motor_tbl[ch].motor_max_speed);
-    ledcWrite(motor_tbl[ch].p_hw->dir_b_pin, motor_tbl[ch].motor_min_speed);
-    motor_tbl[ch].pre_state = MOTOR_DOWN;
-  }
+  ledcWrite(motor_tbl[ch].p_hw->dir_a_pin, motor_tbl[ch].motor_max_speed);
+  ledcWrite(motor_tbl[ch].p_hw->dir_b_pin, motor_tbl[ch].motor_min_speed);
 }
 
 void motorGoDown(uint8_t ch)
 {
-  if (motor_tbl[ch].pre_state == MOTOR_UP)
-  {
-    motorStop(ch);
-    return;
-  }
-
-  if (motor_tbl[ch].motor_lock == false)
-  {
-    ledcWrite(motor_tbl[ch].p_hw->dir_a_pin, motor_tbl[ch].motor_min_speed);
-    ledcWrite(motor_tbl[ch].p_hw->dir_b_pin, motor_tbl[ch].motor_max_speed);
-    motor_tbl[ch].pre_state = MOTOR_UP;
-  }
+  ledcWrite(motor_tbl[ch].p_hw->dir_a_pin, motor_tbl[ch].motor_min_speed);
+  ledcWrite(motor_tbl[ch].p_hw->dir_b_pin, motor_tbl[ch].motor_max_speed);
 }
 
 void motorStop(uint8_t ch)
 {
-  if (motor_tbl[ch].motor_lock == false)
-  {
-    ledcWrite(motor_tbl[ch].p_hw->dir_a_pin, motor_tbl[ch].motor_min_speed);
-    ledcWrite(motor_tbl[ch].p_hw->dir_b_pin, motor_tbl[ch].motor_min_speed);
-    motor_tbl[ch].pre_state = MOTOR_STOP;
-  }
-}
-
-void motorLock(uint8_t ch)
-{
-  motor_tbl[ch].motor_lock = !motor_tbl[ch].motor_lock; 
-}
-
-bool motorGetLocked(uint8_t ch)
-{
-  return motor_tbl[ch].motor_lock;
+  ledcWrite(motor_tbl[ch].p_hw->dir_a_pin, motor_tbl[ch].motor_min_speed);
+  ledcWrite(motor_tbl[ch].p_hw->dir_b_pin, motor_tbl[ch].motor_min_speed);
 }
 #endif

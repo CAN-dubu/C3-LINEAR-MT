@@ -6,6 +6,7 @@ void apInit(void)
 {
   inputInit();
   remoteInit();
+  apMotorInit();
   modeInit();
 }
 
@@ -15,7 +16,6 @@ void apMain(void)
   {
     inputProcess();
     remoteProcess();
-    // motorProcess();
     modeProcess();
   }
 }

@@ -28,7 +28,5 @@ bool motorInit(void);
 void motorGoUp(uint8_t ch);
 void motorGoDown(uint8_t ch);
 void motorStop(uint8_t ch);
-void motorLock(uint8_t ch);
-bool motorGetLocked(uint8_t ch);
 
 #endif
