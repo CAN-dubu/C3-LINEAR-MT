@@ -26,7 +26,7 @@ typedef struct
   remote_event_t  remote_event;
 } ap_remote_t;
 
-ap_remote_t ap_remote[RF_MAX_CH];
+static ap_remote_t ap_remote[RF_MAX_CH];
 
 bool remoteInit(void)
 {
@@ -41,6 +41,8 @@ bool remoteInit(void)
     ap_remote[i].state          = REMOTE_STATE_IDLE;
     ap_remote[i].remote_event   = REMOTE_EVENT_NONE;
   }
+
+  printf("등록된 리모컨 수 : %d\n",getStoredRemoteNum());
 
   return ret;
 }
@@ -67,14 +69,25 @@ void remoteProcess(void)
         {
           if (remoteGetCount(i) > MIN_SAMPLE_NUM) // 20번 이상 일관된 데이터가 들어왔다면
           {
-            if (remoteStorageSave(remoteGetData(i))) // flash에 저장
+            remote_storage_error_t err = remoteStorageSave(remoteGetData(i));
+
+            switch (err)
             {
-              ap_remote[i].remote_event = REMOTE_EVENT_SAMPLES_STORED_IN_FLASH; // event 발생 <- ap_mode에서 읽어가기
-            }
-            else
-            {
-              // @@에러처리 필요
-              ap_remote[i].remote_event = REMOTE_EVENT_FLASH_ERROR;
+              case REMOTE_STORAGE_OK:
+                ap_remote[i].remote_event = REMOTE_EVENT_SAMPLES_STORED_IN_FLASH;
+                break;
+
+              case REMOTE_STORAGE_ERR_ALREADY_EXISTS:
+                ap_remote[i].remote_event = REMOTE_EVENT_SAMPLES_ALREADY_EXISTS;
+                break;
+
+              case REMOTE_STORAGE_ERR_FULL:
+                ap_remote[i].remote_event = REMOTE_EVENT_FLASH_FULL;
+                break;
+              
+              case REMOTE_STORAGE_ERR_INVALID_DATA:
+                ap_remote[i].remote_event = REMOTE_EVENT_WRONG_SAMPLE;
+                break;
             }
            
             ap_remote[i].policy = REMOTE_POLICY_NORMAL;

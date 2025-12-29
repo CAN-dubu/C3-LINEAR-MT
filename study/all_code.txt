@@ -1,0 +1,2491 @@
+﻿
+
+=== C:\work\git\C3-LINEAR-MT\study\src\ap\modules\input\ap_input.c ===
+
+#include "ap_input.h"
+
+/**
+ * @note ?닿납?먯꽌??吏㏐쾶, 以묎컙, 湲멸쾶 ?뚮??붿???????대깽?몃쭔??諛쒖깮?쒖폒 ap_mode?먭쾶 ?꾨떖??
+*/
+typedef struct
+{
+  uint32_t      pressed_start_time;
+  input_event_t input_pressed_event;
+} ap_input_t;
+
+static ap_input_t ap_input[BUTTON_PIN_MAX];
+
+bool inputInit(void)
+{
+  bool ret = true;
+
+  for (int i=0; i<BUTTON_PIN_MAX; i++)
+  {
+    ap_input[i].pressed_start_time   = 0;
+    ap_input[i].input_pressed_event  = INPUT_EVENT_NONE;
+  }
+
+  return ret;
+}
+
+/**
+ * @brief ?ㅼ젣 inputEvent瑜?諛쒖깮?쒗궎???꾨줈?몄뒪, 
+ *        hw_button?먯꽌 pressed ?뱀? released ?대깽?몃? 諛쏆븘 pressedTime??怨꾩궛?섍퀬 
+ *        洹몄뿉 留욌뒗 ?섎?瑜?吏??event瑜?諛쒖깮?쒖폒 ?곸쐞 ap???꾨떖, 
+ */
+void inputProcess(void)
+{
+  static uint32_t input_precess_last_time = 0;
+  
+  uint32_t now = millis();
+
+  if (now - input_precess_last_time < 10)
+  {
+    return;
+  }
+
+  input_precess_last_time = now;
+
+  buttonTask();
+
+  for (int i=0; i<BUTTON_PIN_MAX; i++)
+  {
+    Button_hw_event_t btn_hw_event = buttonGetEvent(i);
+
+    switch (btn_hw_event)
+    {
+      case BTN_HW_EVENT_PRESSED:
+        ap_input[i].pressed_start_time = millis();
+        break;
+
+      case BTN_HW_EVENT_KEEP_PRESSING:
+      {
+        uint32_t pressed_time = millis() - ap_input[i].pressed_start_time; 
+
+        if (pressed_time >= BTN_PRESSED_TIME_LONG && pressed_time < BTN_PRESSED_TIME_LONG + 1000)
+        {
+          ap_input[i].input_pressed_event = INPUT_EVENT_PRESSED_LONG;
+        }
+        else if (pressed_time >= BTN_PRESSED_TIME_MIDDLE && pressed_time < BTN_PRESSED_TIME_MIDDLE + 1000)
+        {
+          ap_input[i].input_pressed_event = INPUT_EVENT_PRESSED_MIDDLE;
+        }
+        break;
+      }
+
+      case BTN_HW_EVENT_RELEASED:
+      {
+        uint32_t pressed_time = millis() - ap_input[i].pressed_start_time;
+        
+        if (pressed_time < BTN_PRESSED_TIME_MIDDLE)
+        {
+          ap_input[i].input_pressed_event = INPUT_EVENT_PRESSED_SHORT;
+        }
+        break;
+      }
+    }
+  }
+}
+
+
+//  ?먯콈??紐⑤몢 ?뺤씤?댁빞??
+input_event_t inputGetEvent(uint8_t ch)
+{
+  if (ch >= BUTTON_PIN_MAX)
+  {
+    return INPUT_EVENT_NONE;
+  }
+
+  input_event_t input_event = ap_input[ch].input_pressed_event;
+  ap_input[ch].input_pressed_event = INPUT_EVENT_NONE; // ?쎌쑝硫?珥덇린??
+  return input_event;
+}
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\ap\modules\input\ap_input.h ===
+
+#ifndef AP_MODULE_INPUT_H_
+#define AP_MODULE_INPUT_H_
+
+#include "../../ap_def.h"
+
+typedef enum
+{
+  INPUT_EVENT_NONE,
+  INPUT_EVENT_PRESSED_SHORT,
+  INPUT_EVENT_PRESSED_MIDDLE,
+  INPUT_EVENT_PRESSED_LONG
+} input_event_t;
+
+bool inputInit(void);
+void inputProcess(void);
+input_event_t inputGetEvent(uint8_t ch);
+
+#endif
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\ap\modules\mode\ap_mode.c ===
+
+#include "ap_mode.h"
+
+/**
+ * 
+ * @brief ?쇰컲紐⑤뱶, learn紐⑤뱶 援щ텇? ?대뼡湲곗?? -> 踰꾪듉湲곗??대떎. 
+ *        3珥? 10珥?湲곗??쇰줈 紐⑤뱶媛 諛붾먮떎.
+ * 
+ */
+
+static void normalModeRun(void);
+static void learnModeRun(void);
+static void deleteModeRun(void);
+static void modeChangeState(ap_mode_state_t new_state);
+static void modeHandleTimeIssue(void);
+static void modeHandleInput(void);
+static void modeHandleRemote(void);
+
+typedef struct
+{
+  ap_mode_state_t    state;
+  ap_mode_state_t    next_state;
+  ap_motor_action_t  motor_action;
+  uint32_t           new_state_entered_time;
+  bool               is_learn_ended; 
+} ap_mode_t;
+
+static ap_mode_t ap_mode;
+
+bool modeInit(void)
+{
+  bool ret = true;
+  ap_mode.new_state_entered_time = millis();
+  ap_mode.is_learn_ended         = false;
+  ap_mode.state                  = MODE_NORMAL;
+  ap_mode.next_state             = MODE_NORMAL;
+  ap_mode.motor_action           = MODE_ACTION_NONE;
+
+  return ret;
+}
+
+void modeProcess(void)
+{
+  // 1) ?대쾲 tick??湲곕낯 next_state???꾩옱 state
+  ap_mode.next_state = ap_mode.state;
+
+  // 2) ?대깽??泥섎━: ?낅젰 / 由щえ而?/ ?쒕젅?댁? ??꾩븘??
+  modeHandleInput();
+  modeHandleRemote();
+  modeHandleTimeIssue();
+
+  // 3) ?곹깭 ?꾩씠 ?뺤젙
+  modeChangeState(ap_mode.next_state);
+
+  // 4) ?꾩옱 ?곹깭???곕Ⅸ ?숈옉 ?섑뻾
+  switch (ap_mode.state)
+  {
+    case MODE_NORMAL:
+      normalModeRun();
+      break;
+
+    case MODE_REMOTE_LEARN:
+      learnModeRun();
+      break;
+
+    case MODE_REMOTE_DELETE:
+      deleteModeRun();
+      break;
+  }
+}
+
+static void normalModeRun(void)
+{
+  allLedOff();
+
+  if (ap_mode.motor_action != MODE_ACTION_NONE)
+  {
+    motorRequestAction(MOTOR_CH1, ap_mode.motor_action);
+  }
+  ap_mode.motor_action = MODE_ACTION_NONE; // ??以꾩쓣 異붽? ?댁＜吏 ?딆쑝硫??곸썝??motor媛 ?吏곸씠寃??쒕떎.
+}
+
+static void learnModeRun(void)
+{
+  if(ap_mode.is_learn_ended)
+  {
+    allLedTogglePin(100);
+  }
+  else
+  {
+    allLedTogglePin(500);
+  }
+}
+
+static void deleteModeRun(void)
+{
+  allLedTogglePin(100);
+}
+
+/**
+ * @brief next_state湲곕컲?쇰줈 ?꾩옱 state瑜?蹂寃쏀븯???⑥닔
+ */
+static void modeChangeState(ap_mode_state_t new_state)
+{
+  if (ap_mode.state == new_state)
+  {
+    return;
+  }
+
+  ap_mode.state = new_state;
+  ap_mode.new_state_entered_time = millis();
+
+  switch (ap_mode.state) // 紐낆떆?곸쑝濡?remote?먭쾶 ?꾩옱 紐⑤뱶?곹깭瑜??뚮┛?? -> 由щえ?몃뒗 ?먭?吏 ?숈옉???곹깭?먮뵲??蹂?뷀븯硫댁꽌 ?ㅽ뻾?쒕떎. (吏㏃? ?곗씠?곕? 寃利앺븷吏, 湲대뜲?댄꽣瑜??곗냽?쇰줈 寃利앺븷吏)
+  {
+    case MODE_REMOTE_LEARN:
+      remoteNotifyMode(RF_CH1, REMOTE_POLICY_LEARN);
+      break;
+
+    case MODE_NORMAL:
+      remoteNotifyMode(RF_CH1, REMOTE_POLICY_NORMAL);
+      break;
+  }
+}
+
+static void modeHandleTimeIssue(void)
+{
+  uint32_t delay = millis() - ap_mode.new_state_entered_time;
+
+  switch (ap_mode.state)
+  {
+    case MODE_REMOTE_LEARN:
+      if (ap_mode.is_learn_ended)
+      {
+        if (delay > 3000)
+        {
+          printf("由щえ而??숈뒿???깃났?덉뒿?덈떎.\n");
+          printf("?깅줉??由щえ而???: %d\n",getStoredRemoteNum());
+          ap_mode.is_learn_ended = false;
+          ap_mode.next_state = MODE_NORMAL;
+        }
+      }
+      else if (delay > 5000) // 10珥?-> 5珥??쒕젅??
+      {
+        printf("?쒗븳???쒓컙 珥덇낵濡? 由щえ而??뺣낫 ?숈뒿???ㅽ뙣?섏??듬땲??\n");
+        ap_mode.next_state = MODE_NORMAL;
+      }
+      break;
+      
+    case MODE_REMOTE_DELETE:
+      if (delay > 3000)
+      {
+        printf("怨듭옣 珥덇린???꾨즺\n");
+        remoteStorageDeleteAll();
+        ap_mode.next_state = MODE_NORMAL;
+      }
+      break;
+  }
+}
+
+/**
+ * @brief inputEvent瑜??몃뱾留곹븯???⑥닔
+ */
+static void modeHandleInput(void)
+{
+  input_event_t first_input_event  = inputGetEvent(BTN_CH1);
+  input_event_t second_input_event = inputGetEvent(BTN_CH2);
+  
+  if (ap_mode.state != MODE_NORMAL)
+  {
+    return;
+  }
+    
+  if (first_input_event == INPUT_EVENT_PRESSED_LONG && second_input_event == INPUT_EVENT_PRESSED_LONG)
+  {
+    ap_mode.next_state = MODE_REMOTE_DELETE;
+  }
+  else if (first_input_event == INPUT_EVENT_PRESSED_MIDDLE && second_input_event == INPUT_EVENT_PRESSED_MIDDLE)
+  {
+    ap_mode.next_state = MODE_REMOTE_LEARN;
+  }
+  else if (first_input_event == INPUT_EVENT_PRESSED_SHORT && second_input_event == INPUT_EVENT_NONE)
+  {
+    ap_mode.motor_action = MODE_ACTION_MOTOR_UP;
+  }
+  else if (first_input_event == INPUT_EVENT_NONE && second_input_event == INPUT_EVENT_PRESSED_SHORT)
+  {
+    ap_mode.motor_action = MODE_ACTION_MOTOR_DOWN;
+  }
+}
+
+static void modeHandleRemote(void)
+{
+  // 紐⑤뱶 state???곕씪 ?쒖뼱媛 ?щ씪?몄빞?? learn紐⑤뱶?쇱떆 蹂꾨룄???쒖뼱濡쒖쭅 ?꾩슂
+  // normal?대㈃ 紐⑦꽣?쒖뼱 ?ш린??
+
+  remote_event_t remote_event = remoteGetEvent(RF_CH1);
+
+  switch (ap_mode.state)
+  {
+    case MODE_NORMAL:
+        
+        switch (remote_event) 
+        {
+          case REMOTE_EVENT_BUTTON_A:
+            ap_mode.motor_action = MODE_ACTION_MOTOR_UP;
+            break;
+
+          case REMOTE_EVENT_BUTTON_B:
+            ap_mode.motor_action = MODE_ACTION_MOTOR_DOWN;
+            break;
+
+          case REMOTE_EVENT_BUTTON_C:
+            ap_mode.motor_action = MODE_ACTION_MOTOR_STOP;
+            break;
+
+          case REMOTE_EVENT_BUTTON_D:
+            ap_mode.motor_action = MODE_ACTION_MOTOR_LOCK;
+            break;
+
+          case REMOTE_EVENT_NO_DATA_IN_FLASH:
+            printf("?깅줉??由щえ而⑥씠 ?꾨떃?덈떎.\n");
+            break;
+
+          case REMOTE_EVENT_BUTTON_UNKNOWN: 
+            printf("由щえ而?踰꾪듉 ?뺣낫瑜??????놁뒿?덈떎.\n");
+            break;
+        }
+      break;
+    
+    case MODE_REMOTE_LEARN:  // ap_remote?⑥뿉??flash??κ퉴吏 留덉튂怨??⑤떎. 洹몃━怨?flash ??μ뿉 ?ㅽ뙣?덉쓣?뚮? ?鍮꾪븯???щ윭媛吏 ?먮윭 泥섎━瑜??ш린??援ы쁽?섎뒗寃껊룄 ?섏걯吏 ?딆븘蹂댁엫.
+        switch (remote_event)
+        {
+          case REMOTE_EVENT_SAMPLES_INVALIDATED:
+            printf("?깅줉???꾩슂???섑뵆???쇱튂?섏? ?딆뒿?덈떎.\n");
+            ap_mode.next_state = MODE_NORMAL;
+            break;
+
+          case REMOTE_EVENT_SAMPLES_STORED_IN_FLASH:
+            ap_mode.is_learn_ended = true;
+            break;
+
+          case REMOTE_EVENT_FLASH_ERROR:
+            printf("Flash 硫붾え由ъ뿉 ?대? ??λ맂 由щえ而??뺣낫?닿굅?? Flash?먯껜??臾몄젣媛 諛쒖깮?섏??듬땲??\n");
+            ap_mode.next_state = MODE_NORMAL;
+            break;
+        }
+      break;
+  }
+}
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\ap\modules\mode\ap_mode.h ===
+
+#ifndef AP_MODULE_MODE_H_
+#define AP_MODULE_MODE_H_
+
+typedef enum
+{
+  MODE_NORMAL = 0,
+  MODE_REMOTE_LEARN,
+  MODE_REMOTE_DELETE,
+} ap_mode_state_t;
+
+#include "../../ap_def.h"
+
+bool modeInit(void);
+void modeProcess(void);
+
+#endif
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\ap\modules\motor\ap_motor.c ===
+
+#include "ap_motor.h"
+
+typedef struct
+{
+  bool is_locked;
+  ap_motor_action_t pre_action;
+} ap_motor_t;
+
+static ap_motor_t ap_motor[MOTOR_MAX_CH];
+
+bool apMotorInit(void)
+{
+  bool ret = true;
+  
+  for (int i=0; i<MOTOR_MAX_CH; i++)
+  {
+    ap_motor[i].is_locked  = false;
+    ap_motor[i].pre_action = MODE_ACTION_NONE;
+  }
+
+  return ret;
+}
+
+void motorRequestAction(uint8_t ch, ap_motor_action_t action)
+{
+  if (ch >= MOTOR_MAX_CH)
+  {
+    return;
+  }
+
+  if (ap_motor[ch].is_locked == true && action != MODE_ACTION_MOTOR_LOCK) // lock?곹깭?대㈃ 紐⑤몢 out
+  {
+    return;
+  }
+
+  switch (action)
+  {
+    case MODE_ACTION_MOTOR_UP:
+
+      if (ap_motor[ch].pre_action == MODE_ACTION_MOTOR_UP)
+      {
+        motorStop(ch);
+        ap_motor[ch].pre_action = MODE_ACTION_NONE;
+        break;
+      }
+
+      motorGoUp(ch);
+      ap_motor[ch].pre_action = MODE_ACTION_MOTOR_UP;
+      break;
+
+    case MODE_ACTION_MOTOR_DOWN:
+
+      if (ap_motor[ch].pre_action == MODE_ACTION_MOTOR_DOWN)
+      {
+        motorStop(ch);
+        ap_motor[ch].pre_action = MODE_ACTION_NONE;
+        break;
+      }
+
+      motorGoDown(ch);
+      ap_motor[ch].pre_action = MODE_ACTION_MOTOR_DOWN;
+      break;
+
+    case MODE_ACTION_MOTOR_STOP:
+
+      if (ap_motor[ch].pre_action == MODE_ACTION_MOTOR_STOP)
+      {
+        ap_motor[ch].pre_action = MODE_ACTION_NONE;
+        break;
+      }
+
+      motorStop(ch);
+      ap_motor[ch].pre_action = MODE_ACTION_MOTOR_STOP;
+      break;
+
+    case MODE_ACTION_MOTOR_LOCK:
+
+      ap_motor[ch].is_locked = !ap_motor[ch].is_locked;
+      motorStop(ch);
+      ap_motor[ch].pre_action = MODE_ACTION_NONE;
+      break;
+  }
+}
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\ap\modules\motor\ap_motor.h ===
+
+#ifndef AP_MODULE_MOTOR_H_
+#define AP_MODULE_MOTOR_H_
+
+#include "../../ap_def.h"
+
+bool apMotorInit(void);
+void motorRequestAction(uint8_t ch, ap_motor_action_t action);
+
+#endif
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\ap\modules\remote\common\rf_def.h ===
+
+#ifndef RF_DEF_H_
+#define RF_DEF_H_
+
+/**
+* @brief 由щえ而?踰꾪듉 ?곸닔, TYPE B 援ы쁽 怨좊?
+*/
+#define REMOTE_TYPE_A_BTN_A 0x01
+#define REMOTE_TYPE_A_BTN_B 0x02
+#define REMOTE_TYPE_A_BTN_C 0x04
+#define REMOTE_TYPE_A_BTN_D 0x08  
+
+#define REMOTE_TYPE_B_BTN_A 0x04 
+#define REMOTE_TYPE_B_BTN_B 0x08 
+#define REMOTE_TYPE_B_BTN_C 0x01
+#define REMOTE_TYPE_B_BTN_D 0x02
+
+/**
+* @brief 由щえ而????
+*/
+typedef enum
+{
+  REMOTE_TYPE_UNKNOWN,
+  REMOTE_TYPE_A, // ?꾩옱 kc?몄쬆??由щえ而?
+  REMOTE_TYPE_B, // ?먮ℓ以묒씠 ?꾨땶 ?ㅻⅨ ??낆쓽 由щえ而?
+} remote_type_t;
+
+#define MAX_REMOTE_CONTROLLER_NUM 20 // ???媛?ν븳 理쒕? 由щえ而???(?곸젅??議곗젅)
+
+/**
+* @brief ?먮윭 ???
+*/
+
+
+#endif
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\ap\modules\remote\controller\ap_remote.c ===
+
+#include "ap_remote.h"
+
+#define MIN_SAMPLE_NUM    20 // ?섑뵆 理쒖냼?섎? ?ш린??寃곗젙?섎뒗寃?留욎쓣吏?? @@
+
+#define NO_SIGNAL_TIMEOUT 80 // ?ㅼ퐫??痢≪젙 寃곌낵 ?곗냽?곗씠???섏떊?곹깭?먯꽌 ?곗씠?곌컙??媛꾧꺽???됯퇏 71~75ms ?뺣룄濡?痢≪젙??
+
+static void remoteResetAll(uint8_t ch);
+static void remoteHandleRfData(uint8_t ch);
+static void remoteHandleDebounce(uint8_t ch);
+static void remoteResetAll(uint8_t ch);
+static void remoteGenerateButtonEvent(uint8_t ch, uint32_t decoded_btn_code);
+
+typedef enum
+{
+  REMOTE_STATE_IDLE,
+  REMOTE_STATE_RECEIVING,
+} remote_state_t;
+
+typedef struct
+{
+  remote_state_t  state;
+  uint8_t         count;
+  uint32_t        ref_data;
+  uint32_t        received_time;
+  remote_policy_t policy;
+  remote_event_t  remote_event;
+} ap_remote_t;
+
+static ap_remote_t ap_remote[RF_MAX_CH];
+
+bool remoteInit(void)
+{
+  bool ret = true;
+  
+  for (int i=0; i<RF_MAX_CH; i++)
+  {
+    ap_remote[i].count          = 0;
+    ap_remote[i].ref_data       = 0;
+    ap_remote[i].received_time  = 0;
+    ap_remote[i].policy         = REMOTE_POLICY_NORMAL;
+    ap_remote[i].state          = REMOTE_STATE_IDLE;
+    ap_remote[i].remote_event   = REMOTE_EVENT_NONE;
+  }
+
+  printf("?깅줉??由щえ而???: %d\n",getStoredRemoteNum());
+
+  return ret;
+}
+
+/**
+ * @note task瑜??먭컻濡?遺꾨━???댁쑀 -> ?쇰━???먯씤???덉쓬 : 由щえ而?踰꾪듉?먯꽌 ?먯쓣 ? ?쒓컙遺??寃利앷??щ? ?섎뒗 諛⑹떇 -> normal mode
+ *                                                      由щえ而?踰꾪듉?먯꽌 ?먯쓣 ?쇱? ?딄퀬 ?곗냽?곸쑝濡?寃利?寃?щ? ?섎뒗 諛⑹떇 -> learn mode
+ *                                                      ?ㅼ젣 timeout??泥댄겕?섎뒗 remoteHandleTimeout() ?⑥닔???ㅼ쭏?곸쑝濡??대? ?곹깭癒몄떊???섑빐 
+ *                                                      由щえ而?踰꾪듉???뚮??ㅺ? ? ?곹깭?ъ빞 諛쒕룞?섍린 ?뚮Ц??
+ *                                                      ?ㅼ젣 hw????숆린?붾? ?꾪빐 ??task濡?遺꾨━?섏???
+ */
+void remoteProcess(void)
+{
+  rfTask();
+  
+  for (int i=0; i<RF_MAX_CH; i++)
+  {
+    switch (rfGetEvent(i))
+    {
+      case RF_HW_EVENT_RECIEVED:
+        remoteHandleRfData(i); 
+
+        if (ap_remote[i].policy == REMOTE_POLICY_LEARN)
+        {
+          if (remoteGetCount(i) > MIN_SAMPLE_NUM) // 20踰??댁긽 ?쇨????곗씠?곌? ?ㅼ뼱?붾떎硫?
+          {
+            if (remoteStorageSave(remoteGetData(i))) // flash?????
+            {
+              ap_remote[i].remote_event = REMOTE_EVENT_SAMPLES_STORED_IN_FLASH; // event 諛쒖깮 <- ap_mode?먯꽌 ?쎌뼱媛湲?
+            }
+            else
+            {
+              // @@?먮윭泥섎━ ?꾩슂
+              ap_remote[i].remote_event = REMOTE_EVENT_FLASH_ERROR;
+            }
+           
+            ap_remote[i].policy = REMOTE_POLICY_NORMAL;
+          }
+        }
+        break;
+
+      case RF_HW_EVENT_NONE:
+        if (ap_remote[i].policy == REMOTE_POLICY_NORMAL)
+        {
+          remoteHandleDebounce(i); 
+        }
+        break;
+    }
+  }
+}
+
+/**
+ * @brief ?ㅼ쭏?곸쑝濡??곗씠?곕? 諛쏆븘 鍮꾧탳?섏뿬 count瑜??쒖뼱?섎뒗 ?⑥닔, 蹂꾨룄???대? ?곹깭癒몄떊?쇰줈 愿由?
+ */
+static void remoteHandleRfData(uint8_t ch)
+{
+  uint32_t rx_code = rfGetData(ch);
+
+  ap_remote[ch].received_time = millis();
+
+  switch (ap_remote[ch].state)
+  {
+    case REMOTE_STATE_IDLE: // 泥ル쾲吏??곗씠???섏떊
+      ap_remote[ch].ref_data = rx_code;
+      ap_remote[ch].count = 1;
+      ap_remote[ch].state = REMOTE_STATE_RECEIVING;
+      break;
+
+    case REMOTE_STATE_RECEIVING:
+      if (rx_code == ap_remote[ch].ref_data) // ?댁쟾 ?곗씠?곗? 鍮꾧탳
+      {
+        ap_remote[ch].count++;
+      }
+      else // 泥ル쾲吏??곗씠?곗????ㅻⅨ ?곗씠???섏떊 -> ?먮윭 諛쒖깮, 蹂꾨룄???몃뱾留곸? ?대뼸寃? @@ 怨좊? POINT
+      {
+        remoteResetAll(ch);
+
+        ap_remote[ch].remote_event = REMOTE_EVENT_SAMPLES_INVALIDATED;
+
+        if (ap_remote[ch].policy == REMOTE_POLICY_LEARN)
+        {
+          ap_remote[ch].policy = REMOTE_POLICY_NORMAL;
+        }
+      }
+      break;
+  }
+}
+
+static void remoteHandleDebounce(uint8_t ch)
+{
+  if (ap_remote[ch].state == REMOTE_STATE_RECEIVING) 
+  {
+    if (millis() - ap_remote[ch].received_time > NO_SIGNAL_TIMEOUT)
+    {
+      if (remoteInfoContained(remoteGetData(ch))) // ?뚮옒?ъ뿉 ??λ릺???덈떎硫?.
+      {
+        uint8_t btn = decodeRemotesButton(remoteGetData(ch)); 
+        remoteGenerateButtonEvent(ch, btn); // 踰꾪듉 ?대깽?몃? 諛쒖깮?쒗궓 ??由ъ뀑?쒕떎. 
+      }
+      else
+      {
+        ap_remote[ch].remote_event = REMOTE_EVENT_NO_DATA_IN_FLASH;
+      }
+     
+      remoteResetAll(ch);
+    }
+  }
+}
+
+static void remoteGenerateButtonEvent(uint8_t ch, uint32_t decoded_btn_code)
+{
+  switch (decoded_btn_code)
+  {
+    case REMOTE_TYPE_A_BTN_A:
+      ap_remote[ch].remote_event = REMOTE_EVENT_BUTTON_A;
+      break;
+
+    case REMOTE_TYPE_A_BTN_B:
+      ap_remote[ch].remote_event = REMOTE_EVENT_BUTTON_B;
+      break;
+
+    case REMOTE_TYPE_A_BTN_C:
+      ap_remote[ch].remote_event = REMOTE_EVENT_BUTTON_C;
+      break;
+
+    case REMOTE_TYPE_A_BTN_D:
+      ap_remote[ch].remote_event = REMOTE_EVENT_BUTTON_D;
+      break;
+
+    default:
+      ap_remote[ch].remote_event = REMOTE_EVENT_BUTTON_UNKNOWN;
+      break;
+  }
+}
+
+static void remoteResetAll(uint8_t ch)
+{
+  ap_remote[ch].count        = 0;
+  ap_remote[ch].ref_data     = 0;
+  ap_remote[ch].state        = REMOTE_STATE_IDLE;
+}
+
+uint8_t remoteGetCount(uint8_t ch)
+{
+  if (ch >= RF_MAX_CH)
+  {
+    return 0;
+  }
+
+  return ap_remote[ch].count;
+}
+
+
+uint32_t remoteGetData(uint8_t ch)
+{
+  if (ch >= RF_MAX_CH)
+  {
+    return 0;
+  }
+
+  return ap_remote[ch].ref_data;
+}
+
+remote_event_t remoteGetEvent(uint8_t ch)
+{
+  if (ch >= RF_MAX_CH)
+  {
+    return REMOTE_EVENT_NONE;
+  }
+
+  remote_event_t remote_event = ap_remote[ch].remote_event;
+  ap_remote[ch].remote_event = REMOTE_EVENT_NONE;
+  return remote_event;
+}
+
+/**
+ * 
+ * @brief ap_mode留??대떦 ?⑥닔瑜??몄텧?댁빞??
+ */
+void remoteNotifyMode(uint8_t ch, remote_policy_t next_policy)
+{
+  ap_remote[ch].count = 0; 
+  ap_remote[ch].policy = next_policy;
+}
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\ap\modules\remote\controller\ap_remote.h ===
+
+#ifndef AP_MODULE_REMOTE_H_
+#define AP_MODULE_REMOTE_H_
+
+#include "../../../ap_def.h"
+#include "../common/rf_def.h"
+#include "../storage/remote_storage.h"
+
+typedef enum  // ?곗냽???곗씠??(20媛??댁긽??寃?ы븷?? ? 3~4媛??뺣룄??吏㏃? ?곗씠?곕? 援щ퀎
+{
+  REMOTE_POLICY_NORMAL,
+  REMOTE_POLICY_LEARN,
+} remote_policy_t;
+
+typedef enum
+{
+  REMOTE_EVENT_NONE,
+  REMOTE_EVENT_BUTTON_A,
+  REMOTE_EVENT_BUTTON_B,
+  REMOTE_EVENT_BUTTON_C,
+  REMOTE_EVENT_BUTTON_D,
+  REMOTE_EVENT_FLASH_ERROR,
+  REMOTE_EVENT_NO_DATA_IN_FLASH,
+  REMOTE_EVENT_SAMPLES_INVALIDATED,
+  REMOTE_EVENT_SAMPLES_STORED_IN_FLASH,
+  REMOTE_EVENT_BUTTON_UNKNOWN,
+} remote_event_t;
+
+bool remoteInit(void);
+void remoteProcess(void);
+uint8_t remoteGetCount(uint8_t ch);
+uint32_t remoteGetData(uint8_t ch);
+remote_event_t remoteGetEvent(uint8_t ch);
+void remoteNotifyMode(uint8_t ch, remote_policy_t next_policy);
+
+#endif
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\ap\modules\remote\decoder\remote_decoder.c ===
+
+#include "remote_decoder.h"
+
+
+/**
+ * @brief ?꾨옒???뺣낫?????媛쒕퀎 ?⑥닔??
+ */
+remote_type_t decodeRemotesType(uint32_t raw)
+{
+  if (raw == 0)
+  {
+    return REMOTE_TYPE_UNKNOWN;
+  }
+
+  if (raw < 0x23900000)
+  {
+    return REMOTE_TYPE_A; 
+  }
+  else
+  {
+    return REMOTE_TYPE_B; 
+  }
+}
+
+uint32_t decodeRemotesAddress(uint32_t raw)
+{
+  if (raw == 0)
+  {
+    return 0;
+  }
+
+  return raw & 0xFFFFFFF0;
+}
+
+uint8_t decodeRemotesButton(uint32_t raw)
+{
+  if (raw == 0)
+  {
+    return 0;
+  }
+
+  return raw & 0x0F;
+}
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\ap\modules\remote\decoder\remote_decoder.h ===
+
+#ifndef MODULE_REMOTE_DECODER_H_
+#define MODULE_REMOTE_DECODER_H_
+
+#include "../../../ap_def.h"
+#include "../common/rf_def.h"
+
+remote_type_t decodeRemotesType(uint32_t raw);
+uint32_t decodeRemotesAddress(uint32_t raw);
+uint8_t decodeRemotesButton(uint32_t raw);
+
+#endif
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\ap\modules\remote\storage\remote_storage.cpp ===
+
+#include <Preferences.h>
+#include "remote_storage.h"
+
+static bool remoteStorageGetSlot(uint8_t slot);
+static bool remoteStorageDelete(uint8_t slot);
+static void remoteSetNamespace(char *buf, uint8_t slot);
+static uint16_t crc16_ccitt(uint8_t *data, uint32_t len);
+static int remoteStorageGetNextSlot(void);
+
+static Preferences prefs;
+
+/**
+ * @brief flash??由щえ而??뺣낫瑜???ν븯???⑥닔 (鍮?怨듦컙??紐낆묶, 二쇱냼, crc瑜????
+ */
+bool remoteStorageSave(uint32_t raw)
+{
+  uint32_t address;
+  uint8_t slot;
+  char remote_name_space[16];
+  
+  if (raw == 0)
+  {
+    return false;
+  }
+
+  address = decodeRemotesAddress(raw);
+  
+  if (remoteInfoContained(address))
+  {
+    return false;
+  }
+
+  slot = remoteStorageGetNextSlot();
+
+  if (slot < 0)
+  {
+    return false; // FULL
+  }
+
+  remoteSetNamespace(remote_name_space, slot);
+
+  if (!prefs.begin(remote_name_space, false)) // ?쎄린, ?곌린 ?꾩슜?쇰줈 prefs?닿린
+  {
+    return false;
+  }
+    
+  uint16_t crc = crc16_ccitt((uint8_t *)&address, sizeof(address));
+
+  prefs.putUInt("address", address); // key,value?띿쑝濡?key??"address"? 臾몄옄?댁쓣 ?ｌ쓬
+  prefs.putUShort("crc", crc);
+  
+  prefs.end(); // prefs ?リ린
+
+  return true;
+}
+
+/**
+ * @brief 怨듭옣 珥덇린???⑥닔
+ */
+void remoteStorageDeleteAll(void)
+{
+  for (int i=1; i<=MAX_REMOTE_CONTROLLER_NUM; i++)
+  {
+    remoteStorageDelete(i);
+  }
+}
+
+bool remoteInfoContained(uint32_t raw) // @@?섏젙??-> raw?곗씠?곕줈 諛쏆븘?쇳븿.
+{
+  if (raw == 0)
+  {
+    return false;
+  }
+
+  uint32_t address = decodeRemotesAddress(raw);
+
+  char name_space[16];
+
+  for (int i = 0; i < MAX_REMOTE_CONTROLLER_NUM; i++)
+  {
+    remoteSetNamespace(name_space, i);
+
+    if (!prefs.begin(name_space, true)) // read-only
+    {
+      continue;
+    }
+
+    uint32_t stored_address = prefs.getUInt("address", 0);
+    uint16_t stored_crc     = prefs.getUShort("crc", 0);
+
+    prefs.end();
+
+    if (stored_address == 0)
+    {
+      continue; // empty slot
+    }
+
+    uint16_t calc_crc =
+      crc16_ccitt((uint8_t *)&stored_address, sizeof(stored_address));
+
+    if (calc_crc != stored_crc)
+    {
+      continue; // ?곗씠??源⑥쭚
+    }
+
+    if (stored_address == address)
+    {
+      return true; // FOUND
+    }
+  }
+
+  return false;
+}
+
+int getStoredRemoteNum(void)
+{
+  return remoteStorageGetNextSlot() - 1;
+}
+
+/**
+ * @brief static ?⑥닔??
+ */
+static bool remoteStorageGetSlot(uint8_t slot)
+{
+  char name_space[16];
+  remoteSetNamespace(name_space, slot);
+
+  if (!prefs.begin(name_space, true))
+  {
+    return false;
+  }
+
+  uint32_t address = prefs.getUInt("address", 0); // ??λ맂 address媛?諛섑솚, ?녿떎硫?0 諛섑솚(?먮쾲吏??몄옄)
+  uint16_t crc_stored = prefs.getUShort("crc", 0);
+
+  prefs.end();
+
+  if (address == 0) // 鍮꾩뼱?덈떎硫?
+  {
+    return false; // false 諛섑솚
+  }
+
+  uint16_t crc_calc = 
+    crc16_ccitt((uint8_t *)&address, sizeof(address));
+
+  return (crc_calc == crc_stored); // ??λ맂 ?곗씠?곌? 源⑥졇?덈떎硫?false 
+}
+
+static int remoteStorageGetNextSlot(void)
+{
+  for (int i = 0; i < MAX_REMOTE_CONTROLLER_NUM; i++)
+  {
+    if (remoteStorageGetSlot(i) == false)
+    {
+      return i;
+    }
+  }
+  return -1; // FULL
+}
+
+static bool remoteStorageDelete(uint8_t slot)
+{
+  char name_space[16];
+  remoteSetNamespace(name_space, slot);
+
+  if (!prefs.begin(name_space, false))
+  {
+    return false;
+  }
+    
+  prefs.clear();
+  prefs.end();
+  
+  return true;
+}
+
+static void remoteSetNamespace(char *buf, uint8_t slot)
+{
+  sprintf(buf, "remote_%d", slot);
+}
+
+static uint16_t crc16_ccitt(uint8_t *data, uint32_t len)
+{
+  uint16_t crc = 0xFFFF;
+  uint8_t *ptr = data;
+  
+  while (len--)
+  {
+    crc ^= *ptr++ << 8;
+    for (uint8_t i = 0; i < 8; ++i)
+    {
+      if (crc & 0x8000)
+        crc = (crc << 1) ^ 0x1021;
+      else
+        crc = crc << 1;
+    }
+  }
+  return crc;
+}
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\ap\modules\remote\storage\remote_storage.h ===
+
+#ifndef REMOTE_STORAGE_H_ 
+#define REMOTE_STORAGE_H_
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#include "../../../ap_def.h"
+#include "../common/rf_def.h"
+#include "../decoder/remote_decoder.h"
+
+bool remoteStorageSave(uint32_t raw);
+void remoteStorageDeleteAll(void);
+bool remoteInfoContained(uint32_t address);
+int getStoredRemoteNum(void);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\ap\modules\sensor\current_sensor.c ===
+
+#include "current_sensor.h"
+
+void currentSensorProcess(void)
+{
+  static uint32_t low_cur_detected_time = 0;
+  static bool is_low_cur_detected = false;
+  static const float sensor_threshold = 0.04;
+
+  if (getSensedValue(SENSOR_CH1) < sensor_threshold)
+  {
+    if (!is_low_cur_detected)
+    {
+      low_cur_detected_time = millis();
+      is_low_cur_detected = true;
+    }
+    else
+    {
+      if (millis() - low_cur_detected_time >= MOTOR_OVERCURRENT_DELAY_MS)
+      {
+        motorRequestAction(MOTOR_CH1, MODE_ACTION_MOTOR_STOP);
+        is_low_cur_detected = false;
+      }
+    }
+  }
+  else
+  {
+    if (is_low_cur_detected)
+    {
+      is_low_cur_detected = false;
+    }
+  }
+  
+}
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\ap\modules\sensor\current_sensor.h ===
+
+#ifndef MODULE_CURRENT_SENSOR_H_
+#define MODULE_CURRENT_SENSOR_H_
+
+#include "../../ap_def.h"
+
+void currentSensorProcess(void);
+
+#endif
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\ap\ap.c ===
+
+#include "ap.h"
+
+
+
+void apInit(void)
+{
+  inputInit();
+  remoteInit();
+  apMotorInit();
+  modeInit();
+}
+
+void apMain(void)
+{
+  while(1)
+  {
+    inputProcess();
+    remoteProcess();
+    modeProcess();
+    currentSensorProcess();
+  }
+}
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\ap\ap.h ===
+
+#ifndef AP_H_
+#define AP_H_
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#include "ap_def.h"
+
+void apInit(void);
+void apMain(void);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\ap\ap_def.h ===
+
+#ifndef AP_DEF_H_
+#define AP_DEF_H_
+
+
+typedef enum
+{
+  MODE_ACTION_NONE,
+  MODE_ACTION_MOTOR_UP,
+  MODE_ACTION_MOTOR_DOWN,
+  MODE_ACTION_MOTOR_STOP,
+  MODE_ACTION_MOTOR_LOCK,
+} ap_motor_action_t;
+
+
+#include "../hw/hw.h"
+#include "../common/def.h"
+#include "modules/mode/ap_mode.h"
+#include "modules/motor/ap_motor.h"
+#include "modules/input/ap_input.h"
+#include "modules/remote/controller/ap_remote.h"
+#include "modules/sensor/current_sensor.h"
+
+// #include "modules/mode/ap_sensor.h"
+
+#define _USE_AP_PREFERENCE
+
+/**
+ * @brief 臾쇰━ 踰꾪듉???꾨Ⅴ??湲곗??쒓컙 ?곸닔
+ */
+#define BTN_PRESSED_TIME_MIDDLE    3000
+#define BTN_PRESSED_TIME_LONG      10000
+
+/**
+ * @brief 紐⑦꽣 ?앹젏 ?꾨떖?? 怨쇱쟾瑜?諛⑹?瑜??꾪빐 ?먮룞?쇰줈 紐⑦꽣瑜?turn off?쒖폒以?二쇨린?쒓컙
+ */
+#define MOTOR_OVERCURRENT_DELAY_MS 3000
+
+#endif
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\common\Inc\qbuffer.h ===
+
+#ifndef QBUFFER_H_
+#define QBUFFER_H_
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#include "../def.h"
+
+typedef struct
+{
+  uint32_t in;
+  uint32_t out;
+  uint32_t len;
+  uint32_t size;
+
+  uint8_t *p_buf;
+} qbuffer_t;
+
+bool     qbufferCreate(qbuffer_t *p_node, uint8_t *p_buf, uint32_t length);
+bool     qbufferCreateBySize(qbuffer_t *p_node, uint8_t *p_buf, uint32_t size, uint32_t length);
+bool     qbufferWrite(qbuffer_t *p_node, uint8_t *p_data, uint32_t length);
+bool     qbufferRead(qbuffer_t *p_node, uint8_t *p_data, uint32_t length);
+uint32_t qbufferAvailable(qbuffer_t *p_node);
+void     qbufferFlush(qbuffer_t *p_node);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\common\Inc\remote_controller.h ===
+
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\common\Inc\rf_sample_queue.h ===
+
+#ifndef SAMPLE_QUEUE_H_
+#define SAMPLE_QUEUE_H_
+
+#include "../def.h"
+
+// bool rfSampleQueueInit(void);
+// void rfsampleQueueUpdate(void);
+// void rfsampleQueuePush(void);
+// void rfsampleQueueWrite(uint32_t code);
+// bool rfsampleQueueGet(uint32_t *out_code);
+#endif
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\common\src\qbuffer.c ===
+
+#include "../Inc/qbuffer.h"
+
+/**
+ * @brief size = 1??qbuffer ?앹꽦
+ */
+bool qbufferCreate(qbuffer_t *p_node, uint8_t *p_buf, uint32_t length)
+{
+  bool ret = true;
+
+  p_node->in    = 0;
+  p_node->out   = 0;
+  p_node->len   = length;
+  p_node->size  = 1;
+  p_node->p_buf = p_buf;
+
+  return ret;
+}
+
+/**
+ * @brief size瑜??낅젰諛쏆븘 qbuffer ?앹꽦
+ */
+bool qbufferCreateBySize(qbuffer_t *p_node, uint8_t *p_buf, uint32_t size, uint32_t length)
+{
+  bool ret = true;
+
+  p_node->in    = 0;
+  p_node->out   = 0;
+  p_node->len   = length;
+  p_node->size  = size;
+  p_node->p_buf = p_buf;
+
+  return ret;
+}
+
+/**
+ * @brief p_data ?곗씠?곕? length媛?留뚰겮 ?먰삎踰꾪띁 p_node???ｋ뒗??
+          ?ｌ쓣 怨듦컙???놁쑝硫?false 由ы꽩.
+ */
+bool qbufferWrite(qbuffer_t *p_node, uint8_t *p_data, uint32_t length)
+{
+  bool ret = true;
+  uint32_t next_in;
+
+  for (int i=0; i<length; i++)
+  {
+    next_in = (p_node->in + 1) % p_node->len; // 留덉?留됯퉴吏 ?먯냼媛 媛?앹감硫?泥ル쾲吏??몃뜳?ㅻ줈 ?뚯븘媛 ?ㅼ떆 梨꾩슦湲?諛섎났
+
+    if (next_in != p_node->out) // ???꾩튂? ?쎈뒗 ?꾩튂媛 媛숇떎 = 踰꾪띁 怨듦컙???녿떎.
+    {
+      if (p_node->p_buf != NULL && p_data != NULL) // p_node??踰꾪띁媛 ?뺤긽?곸씤吏, ??媛믪? ?댁긽???녿뒗吏
+      {
+        uint8_t *p_buf;
+
+        p_buf = &p_node->p_buf[p_node->in*p_node->size]; // ?ъ슜?먭? 吏?뺥븳 踰꾪띁 ?ъ씠利덇? 4諛붿씠?몃씪硫? 1諛붿씠?몃? 4移??ъ슜 (?ㅼ젣 二쇱냼 怨꾩궛) 
+        for (int j=0; j<p_node->size; j++) // (size = 4,in = 0 ?쇰븣 p_buf[0]~ p_buf[3] 源뚯?)
+        {
+          p_buf[j] = p_data[j];
+        }
+        p_node->in = next_in; // 諛섎났
+      }
+    }
+    else
+    {
+      ret = false;
+      break;
+    }
+  }
+
+  return ret;
+}
+
+bool qbufferRead(qbuffer_t *p_node, uint8_t *p_data, uint32_t length)
+{
+  bool ret = true;
+
+  for (int i=0; i<length; i++)
+  {
+    if (p_node->p_buf != NULL && p_data != NULL)
+    {
+      uint8_t *p_buf;
+
+      p_buf = &p_node->p_buf[p_node->out*p_node->size];
+      for (int j=0; j<p_node->size; j++)
+      {
+        p_data[j] = p_buf[j];
+      }
+
+      p_data += p_node->size;
+    }
+
+    if (p_node->out != p_node->in)
+    {
+      p_node->out = (p_node->out + 1) % p_node->len;
+    }
+    else
+    {
+      ret = false;
+      break;
+    }
+  }
+
+  return ret;
+}
+
+uint32_t qbufferAvailable(qbuffer_t *p_node)
+{
+  uint32_t ret;
+
+  ret = (p_node->len + p_node->in - p_node->out) % p_node->len; // in怨?out???몃뜳??李⑤쭔???곗씠?곌? 議댁옱?섍퀬 ?덉쑝誘濡? 踰꾪띁 ???⑥? ?곗씠???섎? 諛섑솚
+
+  return ret;
+}
+
+void qbufferFlush(qbuffer_t *p_node)
+{
+  p_node->in  =  0;
+  p_node->out =  0;
+}
+
+
+
+
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\common\src\remote_controller.cpp ===
+
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\common\src\rf_sample_queue.c ===
+
+#include "../Inc/rf_sample_queue.h"
+#include "../Inc/qbuffer.h"
+#include <stdio.h>
+
+/**
+ * @brief RF 由щえ而??숈뒿???몄뀡 ??愿由?
+ * 
+ * @details 
+ * (Queue push??: ?몄뀡1, QueuePush??: ?덈줈???몄뀡2 (?덈줈???쒖옉), ??湲곗??쇰줈 ?몄뀡??援щ텇 ?섍퀬?덈떎.)
+ * 
+ * 1. current_sample: ?꾩옱 ?섏떊 以묒씤 "??踰꾪듉 ?낅젰 ?몄뀡"???꾩떆 踰꾪띁
+ *    - rx_packet[SAMPLE_MAX]: ?몄뀡 ???쒕줈 ?ㅻⅨ 肄붾뱶?ㅼ쓽 鍮덈룄?????
+ *    - total: ?몄뀡 ??珥??섏떊 ?⑦궥 ??
+ * 
+ * 2. sample_queue (qbuffer_t): ?꾩꽦???몄뀡?ㅼ쓣 FIFO濡?愿由?
+ *    - sample_buf[4]: ?ㅼ젣 ?몄뀡 ?곗씠????μ냼 (理쒕? 4媛??몄뀡 踰꾪띁留?
+ * 
+ * 3. ?몄뀡 遺꾨━ 湲곗?:
+ *    - 50ms ???ㅻⅨ 肄붾뱶 ?섏떊 ??"踰꾪듉 ?꾪솚" ??sampleQueuePush()
+ *    - 200ms ?좏샇 ?놁쓬 ??"踰꾪듉 ?? ????꾩븘??sampleQueuePush()
+ * 
+ * 4. 寃利?
+ *    - ?몄뀡 ??理쒕떎 肄붾뱶 鍮꾩쑉 >= 95% ???좏샇 ?쇨???寃利??깃났
+ * 
+ * @example
+ * 踰꾪듉A 1珥? current_sample.rx_packet[0]={0xAAAA, count=100}
+ * 踰꾪듉A ??  timeout checking -> 200ms ?댁긽 ?묐떟???녿떎硫? ??0]???몄뀡1 ???-> ???몄뀡 ?쒖옉
+ * 踰꾪듉B ?꾪솚 (if '100ms ?대궡' then): current_sample.rx_packet[1]={0xBBBB,count=10}?쇰줈 媛숈? current_sample??count
+ * 踰꾪듉B ?ㅼ떆 ?꾨쫫 (if '100ms ?댄썑' then): ??1]???몄뀡2 ?????vaildate 寃??
+ * 踰꾪듉B ?쇨퀬 100ms?대궡 踰꾪듉C ?꾪솚:  ??2]???몄뀡2 ?????vaildate 寃??
+ */
+
+// static void currentQueueReset(void);
+
+// #define SAMPLE_MAX 20
+// #define NO_SIGNAL_TIME_OUT 100 
+
+// typedef struct 
+// {
+//   uint32_t code;
+//   uint8_t count;
+// } rx_packet_t;
+
+// typedef struct 
+// {
+//   uint8_t      total;
+//   uint32_t     pre_time;
+//   rx_packet_t  rx_packet[SAMPLE_MAX];
+// } sample_t;
+
+// #define SAMPLE_QUEUE_LENGTH 4 // 踰꾪듉? 理쒕? 4媛쒖쓽 ?낅젰?⑦꽩???덉쑝誘濡?
+
+// static sample_t sample_buf[SAMPLE_QUEUE_LENGTH];
+// static qbuffer_t sample_queue;
+
+// static sample_t current_sample;
+
+// bool rfSampleQueueInit(void)
+// {
+//   bool ret = true;
+
+//   qbufferCreateBySize(&sample_queue, (uint8_t*)sample_buf, 
+//                       sizeof(sample_t), SAMPLE_QUEUE_LENGTH);
+//   memset(&current_sample, 0, sizeof(sample_t));
+//   return ret;
+// }
+
+// /**
+//  * @brief timeout留뚰겮???쒓컙?숈븞 臾댁쓳?듭씪??媛뺤젣 ?몄뀡醫낅즺 (???몄뀡 ?쒖옉)
+//  */
+// void rfSampleQueueUpdate(void)
+// {
+//   // 1) ?몄뀡 ??꾩븘??泥댄겕
+//   if (current_sample.total > 0 &&
+//       (millis() - current_sample.pre_time) > NO_SIGNAL_TIME_OUT)
+//   {
+//     sampleQueuePush();
+//   }
+// }
+
+// /**
+//  * @brief ?ㅼ뼱???곗씠?곌? ?덈떎硫? queue??異붽?
+//  */
+// void rfSampleQueuePush(void)
+// {
+//   printf("[PUSH] total=%d\n", current_sample.total);
+//   if (current_sample.total > 0)
+//   {
+//     qbufferWrite(&sample_queue, (uint8_t*)&current_sample, 1);
+//   }
+//   currentQueueReset();
+// }
+
+// /**
+//  * @brief 
+//  */
+// void rfSampleQueueWrite(uint32_t code)
+// {
+//   uint32_t entered_time = millis();
+  
+//   if (current_sample.total > 0 && (entered_time - current_sample.pre_time < 50))
+//   {
+//     for (int i=0; i<SAMPLE_MAX; i++)
+//     {
+//       if (current_sample.rx_packet[i].code != 0 && current_sample.rx_packet[i].code != code)
+//       {
+//         sampleQueuePush();
+//         break;
+//       }
+//     }
+//   }
+
+//   current_sample.pre_time = millis();
+//   current_sample.total++;
+  
+//   // ?댁쟾 ?곗씠?곗? ?숈씪??寃쎌슦
+//   for (int i=0; i<SAMPLE_MAX; i++)
+//   {
+//     if (current_sample.rx_packet[i].code == code)
+//     {
+//       current_sample.rx_packet[i].count++; // ?대떦 ?몃뜳?ㅼ쓽 移댁슫??媛?利앷?.
+//       return;
+//     }
+//   }
+
+//   // code媛 0?쇰줈 鍮꾩뼱?덉쓣?? (?댁쟾 ?곗씠?곗????ㅻⅨ 寃쎌슦)
+//   for (int i = 0; i < SAMPLE_MAX; i++)
+//   {
+//     if (current_sample.rx_packet[i].code == 0)
+//     {
+//       current_sample.rx_packet[i].code = code;
+//       current_sample.rx_packet[i].count = 1;
+//       return;
+//     }
+//   }
+// }
+
+// bool rfSampleQueueGet(uint32_t *out_code)
+// {
+//   if (qbufferAvailable(&sample_queue) == 0) 
+//   {
+//     return false;
+//   }
+  
+//   sample_t temp_buffer;
+//   qbufferRead(&sample_queue, (uint8_t*)&temp_buffer, 1);
+//   printf("[GET] total=%d\n", temp_buffer.total);
+//   if (temp_buffer.total < 1) 
+//   {
+//     printf("[GET] total < 1 -> fail\n");
+//     return false; 
+//   }
+  
+//   // 理쒕떎 ?섏떊 肄붾뱶 李얘린
+//   uint8_t max_count = 0;
+//   uint32_t max_code = 0;
+  
+//   for (int i = 0; i < SAMPLE_MAX; i++)
+//   {
+//     if (temp_buffer.rx_packet[i].count > max_count)
+//     {
+//        printf("  code=0x%08lX, count=%d\n",  (unsigned long)temp_buffer.rx_packet[i].code,
+//              temp_buffer.rx_packet[i].count);
+//       max_count = temp_buffer.rx_packet[i].count;
+//       max_code = temp_buffer.rx_packet[i].code;
+//     }
+//   }
+  
+//   // 95% ?쇨???泥댄겕
+//   if (max_count * 100 / temp_buffer.total >= 95)
+//   {
+//     *out_code = max_code;
+//     return true;
+//   }
+  
+//   return false;
+// }
+
+// static void currentQueueReset(void)
+// {
+//   current_sample.total = 0;
+//   current_sample.pre_time = 0;
+
+//   for (int i = 0; i < SAMPLE_MAX; i++) 
+//   {
+//     current_sample.rx_packet[i].code = 0;
+//     current_sample.rx_packet[i].count = 0;
+//   }
+// }
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\common\def.h ===
+
+#ifndef DEF_H_
+#define DEF_H_
+
+#include <Arduino.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include <stdarg.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+
+#endif
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\hw\driver\button.c ===
+
+#include "../Inc/button.h"
+
+#ifdef _USE_HW_BUTTON
+
+#include "../Inc/gpio.h"
+
+#define NAME_DEF(x)  x, #x
+
+#define BTN1_PIN 0
+#define BTN2_PIN 4
+
+typedef enum
+{
+  BTN_IDLE,
+  BTN_DEBOUNCE_PRESSED,
+  BTN_DEBOUNCE_RELEASED,
+  BTN_PRESSED,    
+  BTN_RELEASED,    
+} Button_debounce_t;
+
+typedef struct
+{
+  uint8_t pin;
+  uint8_t pin_mode;
+  gpio_pin_state_t on_state;
+  ButtonPinName_t pin_name;
+  const char *p_name;
+} button_hw_t;
+
+typedef struct
+{
+  Button_debounce_t  state;
+  bool               pressed;
+  uint16_t           pressed_cnt;
+  uint32_t           pre_time;
+  Button_hw_event_t  pressed_event;
+  const button_hw_t *p_hw;
+} button_t;
+
+static const button_hw_t button_hw[BUTTON_MAX_CH] =
+  {
+    {BTN1_PIN, INPUT_PULLUP, GPIO_STATE_LOW, NAME_DEF(BTN_CH1)},
+    {BTN2_PIN, INPUT_PULLUP, GPIO_STATE_LOW, NAME_DEF(BTN_CH2)},
+  };
+
+static button_t button_tbl[BUTTON_MAX_CH];
+
+bool buttonInit(void)
+{
+  bool ret = true;
+  
+  for(int i=0; i<BUTTON_MAX_CH; i++)
+  {
+    pinMode(button_hw[i].pin, button_hw[i].pin_mode);
+  }
+
+  for(int i=0; i<BUTTON_MAX_CH; i++)
+  {
+    button_tbl[i].p_hw         =  &button_hw[i];
+    button_tbl[i].state        =  0;
+    button_tbl[i].pressed      =  false;
+    button_tbl[i].pressed_cnt  =  0;
+    button_tbl[i].pre_time     =  0;
+  }
+  return ret;
+}
+
+void buttonTask(void)
+{
+
+  for (int i=0; i<BUTTON_MAX_CH; i++)
+  {
+    button_t *p_btn = &button_tbl[i];
+
+    switch (p_btn->state)
+    {
+      case BTN_IDLE: 
+        if (buttonGetPin(i) == true)
+        {
+          p_btn->pre_time = millis();
+          p_btn->state = BTN_DEBOUNCE_PRESSED;
+        }
+        else
+        {
+          p_btn->pre_time = millis();
+          p_btn->state = BTN_DEBOUNCE_RELEASED;
+        }
+        break;
+    
+      case BTN_DEBOUNCE_PRESSED:
+        if (millis() - p_btn->pre_time >= 20)
+        {
+          p_btn->pressed = true;
+          p_btn->pressed_cnt++;
+          p_btn->state = BTN_PRESSED;
+          p_btn->pressed_event = BTN_HW_EVENT_PRESSED;
+        }
+        else
+        {
+          if (buttonGetPin(i) == false)
+          {
+            p_btn->state = BTN_IDLE;
+          }
+        }
+        break;
+
+      case BTN_DEBOUNCE_RELEASED:
+        if (millis() - p_btn->pre_time >= 20)
+        {
+          p_btn->pressed = false;
+          p_btn->state = BTN_RELEASED;
+          p_btn->pressed_event = BTN_HW_EVENT_RELEASED;
+        }
+        else
+        {
+          if (buttonGetPin(i) == true)
+          {
+            p_btn->state = BTN_IDLE;
+          } 
+        }
+        break;
+
+      case BTN_PRESSED:
+
+        p_btn->pressed_event = BTN_HW_EVENT_KEEP_PRESSING;
+
+        if (buttonGetPin(i) == false)
+        {
+          // buttonResetTime();
+          p_btn->state = BTN_IDLE;
+          
+        }
+        break;
+
+      case BTN_RELEASED:
+
+        if (buttonGetPin(i) == true)
+        {
+            p_btn->state = BTN_IDLE;
+        }
+        break;
+    }
+  }
+}
+
+bool buttonGetPin(uint8_t ch)
+{
+  bool ret = false;
+
+  if (ch >= BUTTON_MAX_CH)
+  {
+    return false;
+  }
+
+  if (digitalRead(button_hw[ch].pin) == button_hw[ch].on_state)
+  {
+    ret = true;
+  }
+
+  return ret;
+}
+
+bool buttonGetPressed(uint8_t ch)
+{
+  if (ch >= BUTTON_MAX_CH)
+  {
+    return false;
+  }
+
+  return button_tbl[ch].pressed;
+}
+
+
+// 紐⑤뱺 踰꾪듉?곹깭 鍮꾪듃媛믪쑝濡????
+uint32_t buttonGetData(void)
+{
+  uint32_t ret = 0;
+
+  for (int i=0; i<BUTTON_MAX_CH; i++)
+  {
+    ret |= (buttonGetPressed(i)<<i);
+  }
+
+  return ret;
+}
+
+Button_hw_event_t buttonGetEvent(uint8_t ch)
+{
+  if (ch >= BUTTON_PIN_MAX)
+  {
+    return BTN_HW_EVENT_NONE;
+  }
+
+  Button_hw_event_t button_event = button_tbl[ch].pressed_event;
+  button_tbl[ch].pressed_event = BTN_HW_EVENT_NONE; // ?쎌쑝硫?珥덇린??
+  return button_event;
+}
+
+#endif
+
+//**
+// @question ?ш린???뚯씠釉??뺣낫瑜??ㅻⅨ ?뚯씪濡??대뼸寃??꾨떖?좎??? ?쇰떒 -> getter?앹쑝濡?.
+//*/
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\hw\driver\gpio.c ===
+
+#include "../Inc/gpio.h"
+
+
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\hw\driver\led.c ===
+
+#include "../Inc/led.h"
+
+#ifdef _USE_HW_LED
+
+#include "../Inc/gpio.h"
+
+#define LED_PIN 2
+#define LED2_PIN 1
+
+typedef struct 
+{
+  uint8_t          pin;
+  uint8_t          pin_mode;
+  gpio_pin_state_t on_state;
+  gpio_pin_state_t off_state;
+  gpio_pin_state_t current_state;
+} led_tbl_t;
+
+static led_tbl_t led_tbl[LED_MAX_CH] = 
+{
+  {LED_PIN,  OUTPUT,  LOW,  HIGH},
+  {LED2_PIN, OUTPUT,  LOW,  HIGH},
+};
+
+bool ledInit(void)
+{
+  bool ret = true;
+
+  for(int i=0; i<LED_MAX_CH; i++)
+  {
+    pinMode(led_tbl[i].pin, led_tbl[i].pin_mode);
+    
+    ledOff(i);
+  }
+
+  return ret;
+}
+
+void ledOn(uint8_t ch)
+{
+  if (ch >= LED_MAX_CH) 
+  {
+    return;
+  }
+
+  digitalWrite(led_tbl[ch].pin, led_tbl[ch].on_state);
+  led_tbl[ch].current_state = led_tbl[ch].on_state;
+}
+
+void ledOff(uint8_t ch)
+{
+  if (ch >= LED_MAX_CH)
+  {
+    return;
+  }
+
+  digitalWrite(led_tbl[ch].pin, led_tbl[ch].off_state);
+  led_tbl[ch].current_state = led_tbl[ch].off_state;
+}
+
+void allLedOff(void)
+{
+  for (int i=0; i<LED_MAX_CH; i++)
+  {
+    ledOff(i);
+    led_tbl[i].current_state = led_tbl[i].off_state;
+  }
+}
+
+void allLedTogglePin(uint32_t intervel_ms)
+{
+  static uint32_t pretime;
+
+  if (millis() - pretime >= intervel_ms)
+  {
+    for (int i=0; i<LED_MAX_CH; i++)
+    {
+      led_tbl[i].current_state = !led_tbl[i].current_state;
+      digitalWrite(led_tbl[i].pin, led_tbl[i].current_state);
+    }
+
+    pretime = millis();
+  }
+}
+
+#endif
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\hw\driver\motor.c ===
+
+#include "../Inc/motor.h"
+
+#ifdef _USE_HW_MOTOR
+
+#include "../Inc/gpio.h"
+
+typedef struct
+{
+  uint8_t  dir_a_pin;
+  uint8_t  dir_b_pin;
+  uint8_t  pin_mode;
+  uint8_t  pwm_bit;
+  uint16_t pwm_frequency;
+} motor_hw_t;
+
+typedef struct 
+{
+  uint16_t            motor_max_speed;
+  uint8_t             motor_min_speed;
+  const motor_hw_t   *p_hw;
+} motor_t;
+
+static const motor_hw_t motor_hw[MOTOR_MAX_CH] =
+{
+  { MOTOR_IN1_PIN, MOTOR_IN2_PIN, OUTPUT, MOTOR_PWM_8BIT_RESOLUTION, MOTOR_PWM_FREQ},
+};
+
+static motor_t motor_tbl[MOTOR_MAX_CH];
+
+bool motorInit(void)
+{
+  bool ret = true;
+
+  for(int i=0; i<MOTOR_MAX_CH; i++)
+  {
+    pinMode(motor_hw[i].dir_a_pin, motor_hw[i].pin_mode);
+    pinMode(motor_hw[i].dir_b_pin, motor_hw[i].pin_mode);
+    ledcAttach(motor_hw[i].dir_a_pin, motor_hw[i].pwm_frequency, motor_hw[i].pwm_bit);
+    ledcAttach(motor_hw[i].dir_b_pin, motor_hw[i].pwm_frequency, motor_hw[i].pwm_bit);
+  }
+
+  for(int i=0; i<MOTOR_MAX_CH; i++)
+  {
+    motor_tbl[i].p_hw = &motor_hw[i];
+    motor_tbl[i].motor_min_speed = 0;
+    motor_tbl[i].motor_max_speed = (1UL << motor_tbl[i].p_hw->pwm_bit)  - 1;
+  }
+
+  return ret;
+}
+
+void motorGoUp(uint8_t ch)
+{
+  ledcWrite(motor_tbl[ch].p_hw->dir_a_pin, motor_tbl[ch].motor_max_speed);
+  ledcWrite(motor_tbl[ch].p_hw->dir_b_pin, motor_tbl[ch].motor_min_speed);
+}
+
+void motorGoDown(uint8_t ch)
+{
+  ledcWrite(motor_tbl[ch].p_hw->dir_a_pin, motor_tbl[ch].motor_min_speed);
+  ledcWrite(motor_tbl[ch].p_hw->dir_b_pin, motor_tbl[ch].motor_max_speed);
+}
+
+void motorStop(uint8_t ch)
+{
+  ledcWrite(motor_tbl[ch].p_hw->dir_a_pin, motor_tbl[ch].motor_min_speed);
+  ledcWrite(motor_tbl[ch].p_hw->dir_b_pin, motor_tbl[ch].motor_min_speed);
+}
+#endif
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\hw\driver\rf.cpp ===
+
+#include "../Inc/rf.h"
+
+#ifdef _USE_HW_RF
+
+#include "../Inc/gpio.h"
+#include <RCSwitch.h>
+
+#define RF_DAT_PIN 10
+#define RF_MIN_LENGTH 24
+
+static bool rfGetDetected(uint8_t ch);
+static uint16_t rfGetLength(uint8_t ch);
+
+typedef struct
+{
+  uint8_t    pin;
+  uint8_t    irq_pin;
+} rf_hw_t;
+
+typedef struct
+{
+  uint8_t         state;
+  uint32_t        pre_time;
+  uint32_t        received_data;
+  bool            received_data_is_valid;
+  RF_Event_t      received_event;
+  RCSwitch       *p_rcswitch;
+  const rf_hw_t  *p_hw;
+} rf_t;
+
+static rf_hw_t rf_hw[RF_MAX_CH] = 
+{
+  {RF_DAT_PIN, 0},
+};
+
+static rf_t rf_tbl[RF_MAX_CH];
+
+RCSwitch my_switch[RF_MAX_CH];
+
+bool rfInit(void)
+{  
+  bool ret = true;
+  
+  for (int i=0; i<RF_MAX_CH; i++)
+  {
+    rf_hw[i].irq_pin = digitalPinToInterrupt(rf_hw[i].pin);
+  }  
+  
+  for(int i=0; i<RF_MAX_CH; i++)
+  {
+    rf_tbl[i].p_hw = &rf_hw[i];
+    rf_tbl[i].p_rcswitch = &my_switch[i];
+    rf_tbl[i].p_rcswitch -> enableReceive(rf_tbl[i].p_hw -> irq_pin); 
+    rf_tbl[i].received_data_is_valid = false;
+    rf_tbl[i].state = RF_IDLE;
+  }
+
+  return ret;
+}
+
+void rfTask(void)
+{
+  for(int i=0; i<RF_MAX_CH; i++)
+  {
+    rf_t *p_rf = &rf_tbl[i];
+
+    switch (p_rf->state)
+    {
+      case RF_IDLE:
+        if (rfGetDetected(i))
+        {
+          p_rf->pre_time = millis();
+          p_rf->state = RF_SIGNAL_DETECTED;
+        }
+        break;
+
+      case RF_SIGNAL_DETECTED:
+    if (millis() - p_rf->pre_time >= 50)
+    {
+        p_rf->received_data = p_rf->p_rcswitch->getReceivedValue();
+        p_rf->received_data_is_valid = rfGetLength(i) >= RF_MIN_LENGTH;
+
+        p_rf->p_rcswitch->resetAvailable();
+        p_rf->state = RF_VALIDATED;
+    }
+    break;
+
+      case RF_VALIDATED:
+        if (p_rf->received_data_is_valid)
+        {        
+          rf_tbl[i].received_event = RF_HW_EVENT_RECIEVED;
+        }
+        p_rf->state = RF_IDLE;
+        break;
+        
+    }
+  }
+}
+
+static bool rfGetDetected(uint8_t ch)
+{
+  bool ret = false;
+
+  if (ch >= RF_MAX_CH)
+  {
+    return 0;
+  }
+
+  if (rf_tbl[ch].p_rcswitch -> available())
+  {
+    ret = true;
+  }
+
+  return ret;
+}
+
+uint32_t rfGetData(uint8_t ch)
+{
+  if (ch >= RF_MAX_CH)
+  {
+    return 0;
+  }
+
+  return rf_tbl[ch].received_data;
+}
+
+static uint16_t rfGetLength(uint8_t ch)
+{
+  if (ch >= RF_MAX_CH)
+  {
+    return 0;
+  }
+
+  return rf_tbl[ch].p_rcswitch -> getReceivedBitlength();
+}
+
+RF_Event_t rfGetEvent(uint8_t ch)
+{
+  RF_Event_t rf_event = rf_tbl[ch].received_event;
+  rf_tbl[ch].received_event = RF_HW_EVENT_NONE; // ?쎌쑝硫?珥덇린??
+  return rf_event;
+}
+
+#endif
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\hw\driver\sensor.c ===
+
+#include "../Inc/sensor.h"
+
+#ifdef _USE_HW_SENSOR
+
+#define INPUT_VOLTAGE 3.3f
+#define SENSOR_12BITS_RESOLUTION_VALUE 4095.0f
+
+#define TARGET_MOTOR_GAIN    0.554f
+
+typedef struct
+{
+  float    sensed_current;
+} sensor_t;
+
+static sensor_t sensor[SENSOR_MAX_CH];
+
+bool sensorInit(void)
+{
+  bool ret = true;
+
+  analogReadResolution(12);
+
+  for (int i=0; i<SENSOR_MAX_CH; i++)
+  {
+    sensor[i].sensed_current = 0;
+  }
+  return ret;
+}
+
+float getSensedValue(uint8_t ch)
+{
+    // 1. ADC ?쎄린
+    uint32_t raw_adc_val = analogRead(SENSOR_PIN);
+    
+    // 2. ?꾩븬 蹂??
+    float sensed_voltage = (raw_adc_val / (float)SENSOR_12BITS_RESOLUTION_VALUE) * INPUT_VOLTAGE;
+    
+    // 3. ?꾨쪟 怨꾩궛
+    float raw_current = sensed_voltage / TARGET_MOTOR_GAIN;
+    
+    // 4. 濡쒖슦?⑥뒪 ?꾪꽣 ?곸슜 (90% ?댁쟾媛?+ 10% ?덇컪)
+    static float filtered_current[SENSOR_MAX_CH] = {0};  // 梨꾨꼸蹂??꾪꽣留?媛????
+    filtered_current[ch] = filtered_current[ch] * 0.9f + raw_current * 0.1f;
+    
+    // 5. ?쇱꽌 援ъ“泥댁뿉 ???
+    sensor[ch].sensed_current = filtered_current[ch];
+    
+    return sensor[ch].sensed_current;
+}
+
+
+#endif
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\hw\Inc\button.h ===
+
+#ifndef BUTTON_H_
+#define BUTTON_H_
+
+#include "../hw_def.h"
+
+#define BUTTON_MAX_CH       HW_BUTTON_MAX_CH
+
+/**
+ * @brief event 醫낅쪟
+ */
+typedef enum
+{
+  BTN_HW_EVENT_NONE,
+  BTN_HW_EVENT_PRESSED,
+  BTN_HW_EVENT_KEEP_PRESSING,
+  BTN_HW_EVENT_RELEASED,
+} Button_hw_event_t;
+
+bool buttonInit(void);
+void buttonTask(void);
+bool buttonGetPin(uint8_t ch);
+bool buttonGetPressed(uint8_t ch);
+uint32_t buttonGetData(void);
+void buttonResetTime(uint8_t ch);
+Button_hw_event_t buttonGetEvent(uint8_t ch);
+
+#endif
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\hw\Inc\gpio.h ===
+
+#ifndef GPIO_H_
+#define GPIO_H_
+
+#ifdef __cplusplus
+ extern "C" {
+#endif
+
+#include "../hw_def.h"
+
+typedef enum
+{
+  GPIO_STATE_LOW,
+  GPIO_STATE_HIGH
+} gpio_pin_state_t;
+
+typedef struct
+{
+  uint8_t pin_num;
+  gpio_mode_t pin_mode;
+  gpio_pin_state_t on_state;
+  gpio_pin_state_t off_state;
+  const char   *p_name;
+} gpio_pin_t;
+
+#ifdef _USE_HW_GPIO
+
+#define GPIO_MAX_CH     HW_GPIO_MAX_CH
+
+#endif
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\hw\Inc\led.h ===
+
+#ifndef LED_H_
+#define LED_H_
+
+#include "../hw_def.h"
+
+#define LED_MAX_CH       HW_LED_MAX_CH
+
+bool ledInit(void);
+void ledOn(uint8_t ch);
+void ledOff(uint8_t ch);
+void allLedOff(void);
+void allLedTogglePin(uint32_t intervel_ms);
+#endif
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\hw\Inc\motor.h ===
+
+#ifndef MOTOR_H
+#define MOTOR_H
+
+#include "../hw_def.h"
+
+#define MOTOR_MAX_CH       HW_MOTOR_MAX_CH
+
+#define MOTOR_PWM_8BIT_RESOLUTION    8
+#define MOTOR_PWM_16BIT_RESOLUTION  16
+
+#define MOTOR_PWM_FREQ 5000
+#define MOTOR_MAX_SPEED 255
+#define MOTOR_STOP_SPEED 0 
+
+#define MOTOR_IN1_PIN 18
+#define MOTOR_IN2_PIN 19
+
+typedef enum
+{
+  MOTOR_IDLE,
+  MOTOR_UP,
+  MOTOR_DOWN,
+  MOTOR_STOP,
+  MOTOR_LOCK
+} motor_state_t;
+
+bool motorInit(void);
+void motorGoUp(uint8_t ch);
+void motorGoDown(uint8_t ch);
+void motorStop(uint8_t ch);
+
+#endif
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\hw\Inc\rf.h ===
+
+#ifndef RF_H
+#define RF_H
+
+#include "../hw_def.h"
+
+#define RF_MAX_CH       HW_RF_MAX_CH
+
+#ifdef __cplusplus
+extern "C" 
+{
+#endif
+
+typedef enum 
+{
+  RF_HW_EVENT_NONE,
+  RF_HW_EVENT_RECIEVED,
+} RF_Event_t;
+
+typedef enum
+{
+  RF_IDLE,
+  RF_SIGNAL_DETECTED,
+  RF_VALIDATED
+} RF_mode_t;
+
+bool rfInit(void);
+void rfTask(void);
+uint32_t rfGetData(uint8_t ch);
+RF_Event_t rfGetEvent(uint8_t ch);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\hw\Inc\sensor.h ===
+
+#ifndef _HW_SENSOR_H_
+#define _HW_SENSOR_H_
+
+#include "../hw_def.h"
+
+#define SENSOR_MAX_CH       HW_SENSOR_MAX_CH
+
+#define SENSOR_PIN 3
+
+bool sensorInit(void);
+float getSensedValue(uint8_t ch);
+
+#endif
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\hw\hw.c ===
+
+#include "hw.h"
+
+bool hwInit(void)
+{
+  buttonInit();
+  ledInit();
+  rfInit();
+  motorInit();
+  sensorInit();
+
+  return true;
+}
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\hw\hw.h ===
+
+#ifndef HW_H_
+#define HW_H_
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#include "hw_def.h"
+
+#include "Inc/button.h"
+#include "Inc/led.h"
+#include "Inc/rf.h"
+#include "Inc/motor.h"
+#include "Inc/sensor.h"
+
+bool hwInit(void);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif
+
+
+=== C:\work\git\C3-LINEAR-MT\study\src\hw\hw_def.h ===
+
+#ifndef HW_DEF_H_
+#define HW_DEF_H_
+
+#include "../common/def.h"
+
+#define _USE_HW_GPIO
+#define      HW_GPIO_MAX_CH         GPIO_PIN_MAX
+
+#define _USE_HW_BUTTON
+#define      HW_BUTTON_MAX_CH       BUTTON_PIN_MAX
+
+#define _USE_HW_LED
+#define      HW_LED_MAX_CH          2
+
+#define _USE_HW_RF
+#define      HW_RF_MAX_CH           RF_PIN_MAX
+
+#define _USE_HW_MOTOR
+#define      HW_MOTOR_MAX_CH        MOTOR_PIN_MAX
+
+#define _USE_HW_SENSOR
+#define      HW_SENSOR_MAX_CH       SENSOR_PIN_MAX
+
+/**
+ * @brief ?ъ슜?섍퀬???섎뒗 湲곕뒫 梨꾨꼸???섎뒗 ?닿납?먯꽌 議곗젙
+ */
+
+typedef enum
+{
+  PIN_NUM1,
+  GPIO_PIN_MAX,
+} GpioPinName_t;
+
+typedef enum
+{
+  BTN_CH1,
+  BTN_CH2,
+  BUTTON_PIN_MAX,
+} ButtonPinName_t;
+
+typedef enum
+{
+  RF_CH1,
+  RF_PIN_MAX
+} RfPinName_t;
+
+typedef enum
+{
+  MOTOR_CH1,
+  MOTOR_PIN_MAX,
+} MotorPinName_t;
+
+typedef enum
+{
+  SENSOR_CH1,
+  SENSOR_PIN_MAX,
+} SensorPinName_t;
+
+#endif

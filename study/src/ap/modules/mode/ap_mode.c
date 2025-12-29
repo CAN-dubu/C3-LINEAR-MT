@@ -19,7 +19,7 @@ typedef struct
 {
   ap_mode_state_t    state;
   ap_mode_state_t    next_state;
-  ap_mode_action_t   motor_action;
+  ap_motor_action_t  motor_action;
   uint32_t           new_state_entered_time;
   bool               is_learn_ended; 
 } ap_mode_t;
@@ -132,14 +132,15 @@ static void modeHandleTimeIssue(void)
       {
         if (delay > 3000)
         {
-          printf("succeed to learn\n");
+          printf("리모컨 학습에 성공했습니다.\n");
+          printf("등록된 리모컨 수 : %d\n",getStoredRemoteNum());
           ap_mode.is_learn_ended = false;
           ap_mode.next_state = MODE_NORMAL;
         }
       }
       else if (delay > 5000) // 10초 -> 5초 딜레이
       {
-        printf("learning failed by timeout issue \n");
+        printf("제한된 시간 초과로, 리모컨 정보 학습에 실패하였습니다.\n");
         ap_mode.next_state = MODE_NORMAL;
       }
       break;
@@ -147,7 +148,7 @@ static void modeHandleTimeIssue(void)
     case MODE_REMOTE_DELETE:
       if (delay > 3000)
       {
-        printf("all deleted\n");
+        printf("공장 초기화 완료\n");
         remoteStorageDeleteAll();
         ap_mode.next_state = MODE_NORMAL;
       }
@@ -156,7 +157,7 @@ static void modeHandleTimeIssue(void)
 }
 
 /**
- * @brief inputEvent를 핸들링하는 함수
+ * @brief 버튼에서 받아온 이벤트를 처리하는 함수
  */
 static void modeHandleInput(void)
 {
@@ -186,6 +187,9 @@ static void modeHandleInput(void)
   }
 }
 
+/**
+ * @brief 리모컨에서 받아온 이벤트를 처리하는 함수
+ */
 static void modeHandleRemote(void)
 {
   // 모드 state에 따라 제어가 달라져야함. learn모드일시 별도의 제어로직 필요
@@ -216,29 +220,42 @@ static void modeHandleRemote(void)
             break;
 
           case REMOTE_EVENT_NO_DATA_IN_FLASH:
-            printf("need to learn this remote_controller\n");
+            printf("등록된 리모컨이 아닙니다.\n");
             break;
 
           case REMOTE_EVENT_BUTTON_UNKNOWN: 
-            printf("unKown remote Controller\n");
+            printf("리모컨 버튼 정보를 알 수 없습니다.\n");
             break;
         }
       break;
     
-    case MODE_REMOTE_LEARN:  // ap_remote단에서 flash저장까지 마치고 온다. 그리고 flash 저장에 실패했을때를 대비하여 여러가지 에러 처리를 여기에 구현하는것도 나쁘지 않아보임.
+    case MODE_REMOTE_LEARN:  
         switch (remote_event)
         {
+          case REMOTE_EVENT_WRONG_SAMPLE:
+            printf("정상적인 rf코드가 들어오지 못했습니다.\n");
+            break;
+
           case REMOTE_EVENT_SAMPLES_INVALIDATED:
-            printf("Sampling Failed\n");
+            printf("등록에 필요한 샘플이 일치하지 않습니다.\n");
+            ap_mode.next_state = MODE_NORMAL;
+            break;
+
+          case REMOTE_EVENT_FLASH_FULL:
+            printf("Flash 메모리에 공간이 없습니다.\n");
+            ap_mode.is_learn_ended = true;
+            break;
+          
+          case REMOTE_EVENT_SAMPLES_ALREADY_EXISTS:
+            printf("Flash 메모리에 이미 저장된 리모컨 정보 입니다.\n");
+            break;
+          case REMOTE_EVENT_FLASH_ERROR:
+            printf("Flash에 문제가 발생하였습니다.\n");
             ap_mode.next_state = MODE_NORMAL;
             break;
 
           case REMOTE_EVENT_SAMPLES_STORED_IN_FLASH:
             ap_mode.is_learn_ended = true;
-            break;
-
-          case REMOTE_EVENT_FLASH_ERROR:
-            printf("flash error\n");
             break;
         }
       break;

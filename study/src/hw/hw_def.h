@@ -18,6 +18,13 @@
 #define _USE_HW_MOTOR
 #define      HW_MOTOR_MAX_CH        MOTOR_PIN_MAX
 
+#define _USE_HW_SENSOR
+#define      HW_SENSOR_MAX_CH       SENSOR_PIN_MAX
+
+/**
+ * @brief 사용하고자 하는 기능 채널의 수는 이곳에서 조정
+ */
+
 typedef enum
 {
   PIN_NUM1,
@@ -43,8 +50,10 @@ typedef enum
   MOTOR_PIN_MAX,
 } MotorPinName_t;
 
-#endif
+typedef enum
+{
+  SENSOR_CH1,
+  SENSOR_PIN_MAX,
+} SensorPinName_t;
 
-/**
- * @brief 사용하고자 하는 기능 채널의 수는 이곳에서 조정
- */
+#endif

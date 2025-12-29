@@ -11,6 +11,7 @@ extern "C" {
 #include "Inc/led.h"
 #include "Inc/rf.h"
 #include "Inc/motor.h"
+#include "Inc/sensor.h"
 
 bool hwInit(void);
 

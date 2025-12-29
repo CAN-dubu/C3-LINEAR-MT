@@ -4,6 +4,6 @@
 #include "../../ap_def.h"
 
 bool apMotorInit(void);
-void motorRequestAction(uint8_t ch, ap_mode_action_t action);
+void motorRequestAction(uint8_t ch, ap_motor_action_t action);
 
 #endif

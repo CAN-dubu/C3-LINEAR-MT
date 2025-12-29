@@ -75,15 +75,15 @@ void rfTask(void)
         break;
 
       case RF_SIGNAL_DETECTED:
-        if (millis() - p_rf->pre_time >= 50)
-        {
-          p_rf->received_data = p_rf->p_rcswitch -> getReceivedValue();
-          p_rf->received_data_is_valid = rfGetLength(i) >= RF_MIN_LENGTH;
+    if (millis() - p_rf->pre_time >= 50)
+    {
+        p_rf->received_data = p_rf->p_rcswitch->getReceivedValue();
+        p_rf->received_data_is_valid = rfGetLength(i) >= RF_MIN_LENGTH;
 
-          p_rf->p_rcswitch->resetAvailable();
-          p_rf->state = RF_VALIDATED;
-        }
-        break;
+        p_rf->p_rcswitch->resetAvailable();
+        p_rf->state = RF_VALIDATED;
+    }
+    break;
 
       case RF_VALIDATED:
         if (p_rf->received_data_is_valid)

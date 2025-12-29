@@ -2,46 +2,46 @@
 #include "remote_storage.h"
 
 static bool remoteStorageGetSlot(uint8_t slot);
-static int remoteStorageGetNextSlot(void);
 static bool remoteStorageDelete(uint8_t slot);
 static void remoteSetNamespace(char *buf, uint8_t slot);
 static uint16_t crc16_ccitt(uint8_t *data, uint32_t len);
+static int remoteStorageGetNextSlot(void);
 
 static Preferences prefs;
 
 /**
  * @brief flash에 리모컨 정보를 저장하는 함수 (빈 공간에 명칭, 주소, crc를 저장)
  */
-bool remoteStorageSave(uint32_t raw)
+remote_storage_error_t remoteStorageSave(uint32_t raw)
 {
   uint32_t address;
-  uint8_t slot;
+  int slot;
   char remote_name_space[16];
   
   if (raw == 0)
   {
-    return false;
+    return REMOTE_STORAGE_ERR_INVALID_DATA;
   }
 
   address = decodeRemotesAddress(raw);
   
   if (remoteInfoContained(address))
   {
-    return false;
+    return REMOTE_STORAGE_ERR_ALREADY_EXISTS;
   }
 
   slot = remoteStorageGetNextSlot();
 
   if (slot < 0)
   {
-    return false; // FULL
-  }
+    return REMOTE_STORAGE_ERR_FULL; // FULL
+  } 
 
-  remoteSetNamespace(remote_name_space, slot);
+  remoteSetNamespace(remote_name_space, (uint8_t)slot);
 
   if (!prefs.begin(remote_name_space, false)) // 읽기, 쓰기 전용으로 prefs열기
   {
-    return false;
+    return REMOTE_STORAGE_ERR_FLASH_ACCESS;
   }
     
   uint16_t crc = crc16_ccitt((uint8_t *)&address, sizeof(address));
@@ -51,7 +51,7 @@ bool remoteStorageSave(uint32_t raw)
   
   prefs.end(); // prefs 닫기
 
-  return true;
+  return REMOTE_STORAGE_OK;
 }
 
 /**
@@ -110,6 +110,11 @@ bool remoteInfoContained(uint32_t raw) // @@수정필 -> raw데이터로 받아�
   }
 
   return false;
+}
+
+int getStoredRemoteNum(void)
+{
+  return remoteStorageGetNextSlot() - 1;
 }
 
 /**

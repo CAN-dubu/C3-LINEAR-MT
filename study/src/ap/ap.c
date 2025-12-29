@@ -17,5 +17,6 @@ void apMain(void)
     inputProcess();
     remoteProcess();
     modeProcess();
+    currentSensorProcess();
   }
 }

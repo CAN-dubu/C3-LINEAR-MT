@@ -3,10 +3,10 @@
 typedef struct
 {
   bool is_locked;
-  ap_mode_action_t pre_action;
+  ap_motor_action_t pre_action;
 } ap_motor_t;
 
-ap_motor_t ap_motor[MOTOR_MAX_CH];
+static ap_motor_t ap_motor[MOTOR_MAX_CH];
 
 bool apMotorInit(void)
 {
@@ -21,7 +21,7 @@ bool apMotorInit(void)
   return ret;
 }
 
-void motorRequestAction(uint8_t ch, ap_mode_action_t action)
+void motorRequestAction(uint8_t ch, ap_motor_action_t action)
 {
   if (ch >= MOTOR_MAX_CH)
   {

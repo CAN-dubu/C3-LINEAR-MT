@@ -1,5 +1,7 @@
 #include "ap_input.h"
 
+#define INPUT_ALLOWED_INTERVER 1000
+
 /**
  * @note 이곳에서는 짧게, 중간, 길게 눌렀는지에 대한 이벤트만을 발생시켜 ap_mode에게 전달함
 */
@@ -9,7 +11,7 @@ typedef struct
   input_event_t input_pressed_event;
 } ap_input_t;
 
-ap_input_t ap_input[BUTTON_PIN_MAX];
+static ap_input_t ap_input[BUTTON_PIN_MAX];
 
 bool inputInit(void)
 {
@@ -58,11 +60,11 @@ void inputProcess(void)
       {
         uint32_t pressed_time = millis() - ap_input[i].pressed_start_time; 
 
-        if (pressed_time >= BTN_PRESSED_TIME_LONG) // PRESSED_LONG 제일 첫번째. 반대가 되면 PRESSED_MIDDLE에 영원히 걸림
+        if (pressed_time >= BTN_PRESSED_TIME_LONG && pressed_time < BTN_PRESSED_TIME_LONG + INPUT_ALLOWED_INTERVER)
         {
           ap_input[i].input_pressed_event = INPUT_EVENT_PRESSED_LONG;
         }
-        else if (pressed_time >= BTN_PRESSED_TIME_MIDDLE)
+        else if (pressed_time >= BTN_PRESSED_TIME_MIDDLE && pressed_time < BTN_PRESSED_TIME_MIDDLE + INPUT_ALLOWED_INTERVER)
         {
           ap_input[i].input_pressed_event = INPUT_EVENT_PRESSED_MIDDLE;
         }

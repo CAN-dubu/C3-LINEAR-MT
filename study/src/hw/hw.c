@@ -6,6 +6,7 @@ bool hwInit(void)
   ledInit();
   rfInit();
   motorInit();
+  sensorInit();
 
   return true;
 }

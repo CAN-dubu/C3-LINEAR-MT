@@ -38,5 +38,5 @@ uint8_t decodeRemotesButton(uint32_t raw)
     return 0;
   }
 
-  return raw % 0x0F;
+  return raw & 0x0F;
 }

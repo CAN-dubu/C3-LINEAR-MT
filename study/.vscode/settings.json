@@ -25,7 +25,9 @@
     "remote_storage.h": "c",
     "rf_def.c": "cpp",
     "ap_motor.h": "c",
-    "rf_def.h": "c"
+    "rf_def.h": "c",
+    "sensor.h": "c",
+    "current_sensor.h": "c"
   },
   "C_Cpp_Runner.cCompilerPath": "gcc",
   "C_Cpp_Runner.cppCompilerPath": "g++",
